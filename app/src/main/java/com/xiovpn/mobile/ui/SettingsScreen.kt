@@ -1,0 +1,1449 @@
+package com.xiovpn.mobile.ui
+
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.app.StatusBarManager
+import android.content.ComponentName
+import android.graphics.drawable.Icon
+import android.os.Build
+import android.os.SystemClock
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
+import java.util.Date
+import java.text.DateFormat
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import com.xiovpn.mobile.mci.GeoAssets
+import com.xiovpn.mobile.mci.DomesticDirect
+import com.xiovpn.mobile.settings.DirectDomainWhitelist
+import java.text.SimpleDateFormat
+import java.util.Locale
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material.icons.outlined.CloudDownload
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Link
+import androidx.compose.material.icons.automirrored.outlined.AltRoute
+import androidx.compose.material.icons.outlined.Block
+import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.ChevronLeft
+import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.DashboardCustomize
+import androidx.compose.material.icons.outlined.Dns
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.Hub
+import androidx.compose.material.icons.outlined.MyLocation
+import androidx.compose.material.icons.outlined.PublicOff
+import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Shield
+import androidx.compose.material.icons.outlined.Speed
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.VideocamOff
+import androidx.compose.material.icons.outlined.VpnKey
+import androidx.compose.material.icons.outlined.WarningAmber
+import androidx.compose.material.icons.outlined.WifiTethering
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDirection
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.xiovpn.mobile.R
+import com.xiovpn.mobile.core.ConnectionState
+import com.xiovpn.mobile.core.ConnectionStateStore
+import com.xiovpn.mobile.core.VpnController
+import com.xiovpn.mobile.engine.EngineModeStore
+import com.xiovpn.mobile.engine.pow.PowEngineStore
+import com.xiovpn.mobile.engine.tor.TorEngineStore
+import com.xiovpn.mobile.location.GpsSpoofRuntime
+import com.xiovpn.mobile.location.GpsSpoofStore
+import com.xiovpn.mobile.location.GpsSpoofTarget
+import com.xiovpn.mobile.logging.CrashReportStore
+import com.xiovpn.mobile.profiles.ProfileStore
+import com.xiovpn.mobile.settings.AdvancedSettingsStore
+import com.xiovpn.mobile.settings.CONNECTION_MODE_PROXY
+import com.xiovpn.mobile.settings.CONNECTION_MODE_TUNNEL
+import com.xiovpn.mobile.settings.NetworkGuardStore
+import com.xiovpn.mobile.ui.theme.XioColors
+import com.xiovpn.mobile.vpn.AutoConnectCoordinator
+import com.xiovpn.mobile.vpn.AutoConnectOrigin
+import com.xiovpn.mobile.vpn.ExitIpInfoRepository
+import com.xiovpn.mobile.vpn.LanSharePolicy
+import com.xiovpn.mobile.vpn.LanShareStatus
+import com.xiovpn.mobile.vpn.MonthlyTrafficStore
+import com.xiovpn.mobile.vpn.XioVpnQuickSettingsTileService
+
+private val SettingsGroupShape = RoundedCornerShape(14.dp)
+private val SettingsGroupColor = Color(0xE6121C28)
+private val SettingsHairlineColor = Color.White.copy(alpha = 0.07f)
+
+@Composable
+internal fun SettingsScreen(
+    onMenuClick: () -> Unit,
+    onAdvancedSettingsClick: () -> Unit,
+    onPowSettingsClick: () -> Unit,
+    onTorSettingsClick: () -> Unit,
+    onDirectSettingsClick: () -> Unit = {},
+    onGlowSettingsClick: () -> Unit = {},
+) {
+    val context = LocalContext.current
+    val isPersian = LocalHomePersian.current
+    val engineStore = remember(context) { EngineModeStore.get(context) }
+    val engineMode by engineStore.mode.collectAsStateWithLifecycle()
+    val localizedTextStyle = homeLocalizedTextStyle()
+    var tileNotice by remember { mutableStateOf<String?>(null) }
+    val accent = XioColors.DisconnectedBlue
+    val tileAddedMessage = homeText("Tile added successfully", "دکمه به پنل اضافه شد")
+    val tileAlreadyAddedMessage = homeText("Tile is already in Quick Settings", "دکمه از قبل داخل پنل هست")
+    val tileNotAddedMessage = homeText("Tile was not added", "دکمه اضافه نشد")
+    val tileManualMessage = homeText(
+        "Open Quick Settings edit mode and drag XioVPN into the panel",
+        "ویرایش پنل تنظیمات سریع رو باز کن و XioVPN رو به پنل بکش",
+    )
+    val tileErrorMessage = homeText("Could not request the tile", "درخواست افزودن دکمه انجام نشد")
+    val diagnosticsOpen = remember { mutableStateOf(false) }
+    val secretTaps = remember { mutableIntStateOf(0) }
+    val lastSecretTapAt = remember { mutableLongStateOf(0L) }
+
+    if (diagnosticsOpen.value) {
+        RuntimeDiagnosticsScreen(onClose = { diagnosticsOpen.value = false })
+        return
+    }
+
+    CompositionLocalProvider(LocalTextStyle provides localizedTextStyle) {
+        ToolPageScaffold(
+            accent = accent,
+            verticalSpacing = 16.dp,
+            header = {
+                ToolPageHeader(
+                    title = homeText("General settings", "تنظیمات کلی"),
+                    subtitle = homeText("App and connection preferences", "تنظیمات برنامه و اتصال"),
+                    icon = Icons.Outlined.Settings,
+                    accent = accent,
+                    onMenuClick = onMenuClick,
+                )
+            },
+        ) {
+            item {
+                SettingsGroup(homeText("Connection & Network Settings", "تنظیمات اتصال و شبکه")) {
+                    ConnectionModeSettingsRow(showDivider = true)
+                    AutoConnectSettingsRow(showDivider = true)
+                    LanShareSettingsRow(showDivider = true)
+                    QuicBlockSettingsRow(showDivider = true)
+                    IranDirectSettingsRow(showDivider = true)
+                    ManualDirectDomainsSettingsRow(showDivider = true)
+                    TrafficUsageSettingsRow(showDivider = false)
+                }
+            }
+            item {
+                SettingsGroup(homeText("Privacy & Security", "حریم خصوصی و امنیت")) {
+                    KillSwitchSettingsRow(showDivider = true)
+                    GpsSpoofSettingsRow(showDivider = true)
+                    DnsSinkholeSettingsRow(showDivider = true)
+                    WebRtcBlockSettingsRow(showDivider = true)
+                    Ipv6BlockSettingsRow(showDivider = false)
+                }
+            }
+            item {
+                SettingsGroup(homeText("More", "سایر")) {
+                    SettingsNavRow(
+                        icon = Icons.Outlined.AutoAwesome,
+                        title = homeText("Light dance", "رقص نور"),
+                        summary = homeText(
+                            "Shape and colour around the Connect button",
+                            "شکل و رنگ نور دور دکمه اتصال",
+                        ),
+                        isPersian = isPersian,
+                        showDivider = true,
+                        onClick = onGlowSettingsClick,
+                    )
+                    if (engineMode.isPow) {
+                        SettingsNavRow(
+                            icon = Icons.Outlined.Hub,
+                            title = homeText("XioVPN PoW", "XioVPN PoW"),
+                            summary = homeText("Outer hop and MASQUE", "لایه بیرونی و MASQUE"),
+                            isPersian = isPersian,
+                            showDivider = true,
+                            onClick = onPowSettingsClick,
+                        )
+                    }
+                    if (engineMode.isTor) {
+                        SettingsNavRow(
+                            icon = Icons.Outlined.Shield,
+                            title = homeText("Tor settings", "تنظیمات Tor"),
+                            summary = homeText(
+                                "Bridges, exit, fragment, watchdog",
+                                "پل‌ها، خروجی، تکه‌کردن، نگهبان",
+                            ),
+                            isPersian = isPersian,
+                            showDivider = true,
+                            onClick = onTorSettingsClick,
+                        )
+                    }
+                    if (engineMode.isDirect) {
+                        SettingsNavRow(
+                            icon = Icons.Outlined.Tune,
+                            title = homeText("Direct settings", "تنظیمات Direct"),
+                            summary = homeText(
+                                "Serverless: ClientHello split, UDP noise, DNS",
+                                "بدون سرور: تیکه‌کردن ClientHello، نویز UDP، DNS",
+                            ),
+                            isPersian = isPersian,
+                            showDivider = true,
+                            onClick = onDirectSettingsClick,
+                        )
+                    }
+                    if (engineMode.isXray) {
+                        SettingsNavRow(
+                            icon = Icons.Outlined.Tune,
+                            title = homeText("Xray settings", "تنظیمات Xray"),
+                            summary = homeText(
+                                "DNS, TUN and transport",
+                                "DNS، TUN و انتقال",
+                            ),
+                            isPersian = isPersian,
+                            showDivider = true,
+                            onClick = onAdvancedSettingsClick,
+                        )
+                    }
+                    CrashReportSettingsRow(showDivider = true)
+                    QuickSettingsTileRow(
+                        notice = tileNotice,
+                        showDivider = false,
+                        onAdd = {
+                            requestQuickSettingsTile(context) { result ->
+                                tileNotice = when (result) {
+                                    TileRequestResult.ADDED -> tileAddedMessage
+                                    TileRequestResult.ALREADY_ADDED -> tileAlreadyAddedMessage
+                                    TileRequestResult.NOT_ADDED -> tileNotAddedMessage
+                                    TileRequestResult.ADD_MANUALLY -> tileManualMessage
+                                    TileRequestResult.ERROR -> tileErrorMessage
+                                }
+                            }
+                        },
+                    )
+                }
+            }
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(168.dp)
+                        .pointerInput(Unit) {
+                            detectTapGestures {
+                                val now = SystemClock.elapsedRealtime()
+                                if (now - lastSecretTapAt.longValue < 500L) {
+                                    secretTaps.intValue += 1
+                                } else {
+                                    secretTaps.intValue = 1
+                                }
+                                lastSecretTapAt.longValue = now
+                                if (secretTaps.intValue >= 3) {
+                                    secretTaps.intValue = 0
+                                    diagnosticsOpen.value = true
+                                }
+                            }
+                        },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConnectionModeSettingsRow(showDivider: Boolean) {
+    val context = LocalContext.current
+    val store = remember(context) { AdvancedSettingsStore(context) }
+    val advanced by store.state.collectAsStateWithLifecycle()
+    val proxy = advanced.connectionMode == CONNECTION_MODE_PROXY
+    var open by remember { mutableStateOf(false) }
+    val modes = listOf(
+        PowMenuChoice(
+            CONNECTION_MODE_TUNNEL,
+            homeText("Tunnel (VPN)", "تونل (VPN)"),
+            homeText("Every app on the phone goes through the VPN.", "همه‌ی برنامه‌های گوشی از VPN رد می‌شن."),
+        ),
+        PowMenuChoice(
+            CONNECTION_MODE_PROXY,
+            homeText("Proxy only", "فقط پروکسی"),
+            homeText("Only apps you set up yourself use it.", "فقط برنامه‌هایی که خودت تنظیم کنی ازش رد می‌شن."),
+        ),
+    )
+    val current = modes.firstOrNull { it.id == advanced.connectionMode } ?: modes.first()
+    Column(modifier = Modifier.fillMaxWidth()) {
+        SettingsNavRow(
+            icon = Icons.Outlined.VpnKey,
+            title = homeText("Connection mode", "حالت اتصال"),
+            summary = if (proxy) {
+                homeText("Port ${advanced.socksPort} · Xray, Tor and PoW", "پورت ${advanced.socksPort} · Xray، Tor و PoW")
+            } else {
+                homeText("VPN for every app · Xray, Tor and PoW", "VPN برای همه‌ی برنامه‌ها · Xray، Tor و PoW")
+            },
+            isPersian = LocalHomePersian.current,
+            showDivider = false,
+            onClick = { open = true },
+        )
+        if (proxy) {
+            Column(
+                modifier = Modifier.padding(start = 50.dp, end = 12.dp, bottom = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    homeText(
+                        "Set apps to 127.0.0.1 and this port. Applies to the next connection.",
+                        "برنامه‌ها را روی 127.0.0.1 و این پورت تنظیم کن. از اتصال بعدی اعمال می‌شود.",
+                    ),
+                    color = XioColors.TextSecondary,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                )
+                SocksPortField(advanced.socksPort) { port ->
+                    store.update { it.copy(socksPort = port) }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            homeText("UDP", "UDP"),
+                            color = XioColors.TextPrimary,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
+                        Text(
+                            homeText("Needed for voice calls and games.", "برای تماس صوتی و بازی‌ها لازمه."),
+                            color = XioColors.TextSecondary,
+                            fontSize = 12.sp,
+                        )
+                    }
+                    Switch(
+                        checked = advanced.socksUdp,
+                        onCheckedChange = { enabled -> store.update { it.copy(socksUdp = enabled) } },
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = XioColors.DisconnectedBlue,
+                            checkedThumbColor = Color.White,
+                        ),
+                    )
+                }
+            }
+        }
+        if (showDivider) SettingsHairline()
+    }
+    if (open) {
+        PowChoiceSheet(
+            title = homeText("How apps use the connection", "برنامه‌ها چطور از اتصال استفاده کنن"),
+            choices = modes,
+            selectedId = current.id,
+            accent = XioColors.DisconnectedBlue,
+            onSelect = { id ->
+                if (id != advanced.connectionMode) store.update { it.copy(connectionMode = id) }
+            },
+            onDismiss = { open = false },
+        )
+    }
+}
+
+@Composable
+private fun SocksPortField(value: Int, onValid: (Int) -> Unit) {
+    var text by remember(value) { mutableStateOf(value.toString()) }
+        val valid = text.toIntOrNull()?.let { it in 1024..65535 } == true
+    OutlinedTextField(
+        value = text,
+        onValueChange = { raw ->
+            text = raw.filter(Char::isDigit).take(5)
+            text.toIntOrNull()?.takeIf { it in 1024..65535 && it != value }?.let(onValid)
+        },
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text(homeText("SOCKS port", "پورت SOCKS"), fontSize = 11.sp) },
+        singleLine = true,
+        isError = !valid,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedTextColor = Color.White,
+            unfocusedTextColor = Color.White,
+            focusedBorderColor = XioColors.DisconnectedBlue,
+            unfocusedBorderColor = Color.White.copy(alpha = 0.14f),
+            focusedLabelColor = XioColors.TextSecondary,
+            unfocusedLabelColor = XioColors.TextSecondary,
+            cursorColor = XioColors.DisconnectedBlue,
+        ),
+    )
+}
+
+@Composable
+private fun KillSwitchSettingsRow(showDivider: Boolean) {
+    val context = LocalContext.current
+    val store = remember(context) { NetworkGuardStore.get(context) }
+    val settings by store.settings.collectAsStateWithLifecycle()
+    val blocking by NetworkGuardStore.blocking.collectAsStateWithLifecycle()
+    val connection by ConnectionStateStore.state.collectAsStateWithLifecycle()
+    val advancedStore = remember(context) { AdvancedSettingsStore(context) }
+    val advanced by advancedStore.state.collectAsStateWithLifecycle()
+    val proxyMode = advanced.connectionMode == CONNECTION_MODE_PROXY
+    val summary = when {
+        proxyMode -> homeText("Tunnel mode only", "فقط حالت تونل")
+        blocking -> homeText("Blocking leaks", "نشت مسدود است")
+        settings.killSwitch && connection == ConnectionState.CONNECTED ->
+            homeText("Armed", "فعال")
+        settings.killSwitch -> homeText("On", "روشن")
+        else -> homeText("Off", "خاموش")
+    }
+    SettingsToggleRow(
+        icon = Icons.Outlined.Block,
+        title = homeText("Kill switch", "کلید قطع اضطراری"),
+        summary = summary,
+        enabled = settings.killSwitch,
+        summaryColor = when {
+            blocking -> XioColors.DisconnectingAmber
+            settings.killSwitch -> XioColors.ConnectedGreen
+            else -> XioColors.TextSecondary
+        },
+        help = homeText(
+            "If the VPN drops, other apps stay offline until you reconnect or turn this off. Tunnel mode only.",
+            "اگر VPN قطع شود، بقیه برنامه‌ها آفلاین می‌مانند تا دوباره وصل شوی یا این گزینه را خاموش کنی. فقط حالت تونل.",
+        ),
+        showDivider = showDivider,
+        onCheckedChange = { checked ->
+            store.setKillSwitch(checked)
+            VpnController.applyNetworkGuard(context)
+        },
+    )
+}
+
+@Composable
+private fun AutoConnectSettingsRow(showDivider: Boolean) {
+    val context = LocalContext.current
+    val store = remember(context) { NetworkGuardStore.get(context) }
+    val settings by store.settings.collectAsStateWithLifecycle()
+    SettingsToggleRow(
+        icon = Icons.Outlined.Bolt,
+        title = homeText("Auto connect", "اتصال خودکار"),
+        summary = if (settings.autoConnect) homeText("On", "روشن") else homeText("Off", "خاموش"),
+        enabled = settings.autoConnect,
+        help = homeText(
+            "Connects after reboot and when the app opens, if VPN permission is already granted.",
+            "بعد از روشن شدن گوشی و باز شدن برنامه، اگر مجوز VPN از قبل داده شده باشد، خودش وصل می‌شود.",
+        ),
+        showDivider = showDivider,
+        onCheckedChange = { checked ->
+            store.setAutoConnect(checked)
+            if (checked) {
+                AutoConnectCoordinator.ensureWatching(context)
+                AutoConnectCoordinator.tryStart(context, AutoConnectOrigin.SETTING)
+            }
+        },
+    )
+}
+
+@Composable
+private fun LanShareSettingsRow(showDivider: Boolean) {
+    val context = LocalContext.current
+    val store = remember(context) { NetworkGuardStore.get(context) }
+    val settings by store.settings.collectAsStateWithLifecycle()
+    val connection by ConnectionStateStore.state.collectAsStateWithLifecycle()
+    val endpoint by LanShareStatus.endpoint.collectAsStateWithLifecycle()
+    val ip = endpoint.address?.takeIf { endpoint.listening && it.isNotBlank() }
+    val port = if (endpoint.listening) endpoint.port else LanSharePolicy.PORT
+    val ready = ip != null
+    val summary = when {
+        !settings.lanShare -> homeText("Off", "خاموش")
+        connection != ConnectionState.CONNECTED -> homeText("After connect", "بعد از وصل")
+        ready -> "$ip:$port"
+        endpoint.detail == "no lan" -> homeText("Needs Wi‑Fi", "وای‌فای لازم است")
+        else -> homeText("Starting…", "در حال شروع…")
+    }
+    SettingsToggleRow(
+        icon = Icons.Outlined.WifiTethering,
+        title = homeText("LAN sharing", "اشتراک در شبکه"),
+        summary = summary,
+        enabled = settings.lanShare,
+        help = homeText(
+            "On the other device, set SOCKS5 to this IP and port. Same Wi‑Fi is enough — hotspot is optional. Trusted networks only, no password.",
+            "روی دستگاه دیگر، پروکسی SOCKS5 را روی همین IP و پورت بگذار. همان وای‌فای کافی است — هات‌اسپات لازم نیست. فقط شبکه مورد اعتماد، بدون رمز.",
+        ),
+        extra = if (settings.lanShare) {
+            {
+                LanShareEndpointPanel(
+                    ip = ip,
+                    port = port,
+                    connected = connection == ConnectionState.CONNECTED,
+                    needsWifi = endpoint.detail == "no lan",
+                )
+            }
+        } else null,
+        autoExpand = settings.lanShare,
+        showDivider = showDivider,
+        onCheckedChange = { checked ->
+            store.setLanShare(checked)
+            VpnController.applyNetworkGuard(context)
+        },
+    )
+}
+
+
+
+@Composable
+private fun IranDirectSettingsRow(showDivider: Boolean) {
+    val context = LocalContext.current
+    val isPersian = LocalHomePersian.current
+    val store = remember(context) { NetworkGuardStore.get(context) }
+    val settings by store.settings.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    var statusText by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var notice by remember { mutableStateOf<String?>(null) }
+    fun pick(en: String, fa: String) = if (isPersian) fa else en
+    fun refreshStatus() {
+        val st = runCatching { GeoAssets.status(context) }.getOrNull()
+        statusText = if (st == null) {
+            pick("Not ready yet", "هنوز آماده نیست")
+        } else {
+            val day = runCatching {
+                SimpleDateFormat("d MMM", if (isPersian) Locale("fa") else Locale.US)
+                    .format(Date(st.updatedAtMs))
+            }.getOrNull()
+            when {
+                st.tag.startsWith("latest@") && day != null ->
+                    pick("Updated · $day", "به‌روز · $day")
+                day != null ->
+                    pick("Ready · $day", "آماده · $day")
+                else ->
+                    pick("Ready", "آماده")
+            }
+        }
+    }
+    LaunchedEffect(Unit) { refreshStatus() }
+    SettingsToggleRow(
+        icon = Icons.AutoMirrored.Outlined.AltRoute,
+        title = homeText("Iranian sites direct", "سایت‌های ایرانی مستقیم"),
+        summary = if (settings.iranDirect) homeText("On", "روشن") else homeText("Off", "خاموش"),
+        enabled = settings.iranDirect,
+        help = homeText(
+            "Iranian sites open without the VPN, and load faster.",
+            "سایت‌های ایران بدون فیلترشکن و سریع‌تر باز می‌شن.",
+        ),
+        extra = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    statusText,
+                    color = XioColors.TextSecondary.copy(alpha = 0.9f),
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    onClick = {
+                        if (busy) return@TextButton
+                        busy = true
+                        notice = null
+                        scope.launch {
+                            val result = withContext(Dispatchers.IO) {
+                                runCatching {
+                                    GeoAssets.updateFromNetwork(context)
+                                    DomesticDirect.reloadFromFiles(context)
+                                }
+                            }
+                            busy = false
+                            result.onSuccess {
+                                notice = pick("Updated", "به‌روز شد")
+                                refreshStatus()
+                            }.onFailure { err ->
+                                notice = pick(
+                                    "Failed",
+                                    "ناموفق",
+                                )
+                            }
+                        }
+                    },
+                    enabled = !busy,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                ) {
+                    Icon(
+                        Icons.Outlined.CloudDownload,
+                        contentDescription = null,
+                        tint = XioColors.ConnectedGreen,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        if (busy) {
+                            homeText("Updating…", "در حال به‌روزرسانی…")
+                        } else {
+                            homeText("Update", "به‌روزرسانی")
+                        },
+                        color = XioColors.ConnectedGreen,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
+            notice?.let {
+                Text(it, color = XioColors.ConnectedGreen, fontSize = 11.sp)
+            }
+        },
+        showDivider = showDivider,
+        onCheckedChange = { checked ->
+            store.setIranDirect(checked)
+        },
+    )
+}
+
+@Composable
+private fun ManualDirectDomainsSettingsRow(showDivider: Boolean) {
+    val context = LocalContext.current
+    val store = remember(context) { DirectDomainWhitelist.get(context) }
+    val domains by store.domains.collectAsStateWithLifecycle()
+    var draft by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    val focus = LocalFocusManager.current
+    val invalidHint = homeText(
+        "Type a site like ",
+        "آدرس سایت را مثل ",
+    ) + homeLtr("digikala.com")
+    fun tryAdd() {
+        val ok = store.add(draft)
+        if (ok) {
+            draft = ""
+            error = null
+            focus.clearFocus()
+            VpnController.applyDirectWhitelist(context)
+        } else {
+            error = invalidHint
+        }
+    }
+    val summary = when {
+        domains.isEmpty() -> homeText("Empty", "خالی")
+        else -> homeText(
+            "${domains.size} site${if (domains.size == 1) "" else "s"}",
+            "${domains.size} سایت",
+        )
+    }
+    SettingsToggleRow(
+        icon = Icons.Outlined.Link,
+        title = homeText("My direct domains", "دامنه‌های مستقیم من"),
+        summary = summary,
+        enabled = domains.isNotEmpty(),
+        help = homeText(
+            "Sites you add here open without the VPN.",
+            "سایت‌هایی که اینجا اضافه کنی، بدون فیلترشکن باز می‌شن.",
+        ),
+        extra = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                domains.forEach { host ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.White.copy(alpha = 0.05f))
+                            .padding(start = 10.dp, end = 2.dp, top = 4.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            host,
+                            color = XioColors.TextPrimary,
+                            fontSize = 13.sp,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = LocalTextStyle.current.copy(textDirection = TextDirection.Ltr),
+                        )
+                        Icon(
+                            Icons.Outlined.Close,
+                            contentDescription = homeText("Remove", "حذف"),
+                            tint = XioColors.TextSecondary,
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .clickable {
+                                    store.remove(host)
+                                    VpnController.applyDirectWhitelist(context)
+                                }
+                                .padding(6.dp),
+                        )
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    OutlinedTextField(
+                        value = draft,
+                        onValueChange = {
+                            draft = it
+                            error = null
+                        },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        placeholder = {
+                            Text(
+                                homeLtr("digikala.com"),
+                                color = XioColors.TextSecondary.copy(alpha = 0.55f),
+                                fontSize = 13.sp,
+                                style = LocalTextStyle.current.copy(textDirection = TextDirection.Ltr),
+                            )
+                        },
+                        textStyle = LocalTextStyle.current.copy(
+                            color = XioColors.TextPrimary,
+                            fontSize = 13.sp,
+                            textDirection = TextDirection.Ltr,
+                        ),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = { tryAdd() }),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = XioColors.ConnectedGreen.copy(alpha = 0.55f),
+                            unfocusedBorderColor = Color.White.copy(alpha = 0.12f),
+                            cursorColor = XioColors.ConnectedGreen,
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                        ),
+                    )
+                    TextButton(
+                        onClick = { tryAdd() },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    ) {
+                        Icon(
+                            Icons.Outlined.Add,
+                            contentDescription = null,
+                            tint = XioColors.ConnectedGreen,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(2.dp))
+                        Text(
+                            homeText("Add", "افزودن"),
+                            color = XioColors.ConnectedGreen,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                }
+                error?.let {
+                    Text(it, color = Color(0xFFFF8A95), fontSize = 11.sp)
+                }
+            }
+        },
+        showDivider = showDivider,
+        onCheckedChange = null,
+    )
+}
+
+@Composable
+private fun QuicBlockSettingsRow(showDivider: Boolean) {
+    val context = LocalContext.current
+    val store = remember(context) { NetworkGuardStore.get(context) }
+    val settings by store.settings.collectAsStateWithLifecycle()
+    val advancedStore = remember(context) { AdvancedSettingsStore(context) }
+    val advanced by advancedStore.state.collectAsStateWithLifecycle()
+    val proxyMode = advanced.connectionMode == CONNECTION_MODE_PROXY
+    val summary = when {
+        proxyMode -> homeText("Tunnel mode only", "فقط حالت تونل")
+        settings.quicBlock -> homeText("On", "روشن")
+        else -> homeText("Off", "خاموش")
+    }
+    SettingsToggleRow(
+        icon = Icons.Outlined.Speed,
+        title = homeText("QUIC Blocker", "مسدودساز QUIC"),
+        summary = summary,
+        enabled = settings.quicBlock,
+        help = homeText(
+            "Blocks UDP 443 so apps like YouTube, Instagram, and browsers fall back to TCP. That often fixes slow or stuck video loading.",
+            "ترافیک UDP 443 را مسدود می‌کند. این کار برنامه‌هایی مثل یوتیوب، اینستاگرام و مرورگرها را مجبور به استفاده از TCP کرده و مشکل کندی و لودینگ ویدیوها را برطرف می‌کند.",
+        ),
+        showDivider = showDivider,
+        onCheckedChange = { checked ->
+            store.setQuicBlock(checked)
+            VpnController.applyNetworkGuard(context)
+        },
+    )
+}
+
+@Composable
+private fun TrafficUsageSettingsRow(showDivider: Boolean) {
+    val context = LocalContext.current
+    val monthly by remember(context) { MonthlyTrafficStore.get(context) }.usage.collectAsStateWithLifecycle()
+    val monthTotal = monthlyTrafficLabel(monthly.totalBytes)
+    SettingsToggleRow(
+        icon = Icons.Outlined.Schedule,
+        title = homeText("Traffic usage", "نمایش ترافیک مصرفی"),
+        summary = homeText("This month · $monthTotal", "این ماه · $monthTotal"),
+        enabled = false,
+        help = homeText(
+            "VPN traffic on this phone. Session resets when you disconnect.",
+            "ترافیک VPN همین گوشی. جلسه با قطع شدن از نو شروع می‌شود.",
+        ),
+        extra = { TrafficUsagePanels() },
+        showDivider = showDivider,
+        onCheckedChange = null,
+    )
+}
+
+@Composable
+private fun DnsSinkholeSettingsRow(showDivider: Boolean) {
+    val context = LocalContext.current
+    val store = remember(context) { NetworkGuardStore.get(context) }
+    val settings by store.settings.collectAsStateWithLifecycle()
+    val advancedStore = remember(context) { AdvancedSettingsStore(context) }
+    val advanced by advancedStore.state.collectAsStateWithLifecycle()
+    val proxyMode = advanced.connectionMode == CONNECTION_MODE_PROXY
+    val summary = when {
+        proxyMode -> homeText("Tunnel mode only", "فقط حالت تونل")
+        settings.dnsSinkhole -> homeText("On", "روشن")
+        else -> homeText("Off", "خاموش")
+    }
+    SettingsToggleRow(
+        icon = Icons.Outlined.Dns,
+        title = homeText("Block Trackers & Ads", "مسدودسازی ردیاب و تبلیغات"),
+        summary = summary,
+        enabled = settings.dnsSinkhole,
+        help = homeText(
+            "DNS Sinkhole. Locally blocks known tracker domains to improve speed and privacy.",
+            "DNS Sinkhole. دامنه‌های ردیاب (تِرَکر) شناخته شده را به صورت محلی مسدود می‌کند تا سرعت و حریم خصوصی بهبود یابد.",
+        ),
+        showDivider = showDivider,
+        onCheckedChange = { checked ->
+            store.setDnsSinkhole(checked)
+            VpnController.applyNetworkGuard(context)
+        },
+    )
+}
+
+@Composable
+private fun WebRtcBlockSettingsRow(showDivider: Boolean) {
+    val context = LocalContext.current
+    val store = remember(context) { NetworkGuardStore.get(context) }
+    val settings by store.settings.collectAsStateWithLifecycle()
+    val advancedStore = remember(context) { AdvancedSettingsStore(context) }
+    val advanced by advancedStore.state.collectAsStateWithLifecycle()
+    val proxyMode = advanced.connectionMode == CONNECTION_MODE_PROXY
+    val summary = when {
+        proxyMode -> homeText("Tunnel mode only", "فقط حالت تونل")
+        settings.webRtcBlock -> homeText("On", "روشن")
+        else -> homeText("Off", "خاموش")
+    }
+    SettingsToggleRow(
+        icon = Icons.Outlined.VideocamOff,
+        title = homeText("Prevent WebRTC IP Leak", "جلوگیری از نشت IP در WebRTC"),
+        summary = summary,
+        enabled = settings.webRtcBlock,
+        help = homeText(
+            "Drops STUN/TURN packets so WebRTC cannot leak your real IP. May break in-browser voice/video calls such as Google Meet.",
+            "پکت‌های STUN/TURN را دراپ می‌کند تا از نشت آی‌پی واقعی شما توسط WebRTC جلوگیری کند. (ممکن است تماس‌های صوتی/تصویری تحت وب مثل Google Meet را قطع کند).",
+        ),
+        showDivider = showDivider,
+        onCheckedChange = { checked ->
+            store.setWebRtcBlock(checked)
+            VpnController.applyNetworkGuard(context)
+        },
+    )
+}
+
+@Composable
+private fun Ipv6BlockSettingsRow(showDivider: Boolean) {
+    val context = LocalContext.current
+    val store = remember(context) { NetworkGuardStore.get(context) }
+    val settings by store.settings.collectAsStateWithLifecycle()
+    val advancedStore = remember(context) { AdvancedSettingsStore(context) }
+    val advanced by advancedStore.state.collectAsStateWithLifecycle()
+    val proxyMode = advanced.connectionMode == CONNECTION_MODE_PROXY
+    val summary = when {
+        proxyMode -> homeText("Tunnel mode only", "فقط حالت تونل")
+        settings.ipv6Block -> homeText("On", "روشن")
+        else -> homeText("Off", "خاموش")
+    }
+    SettingsToggleRow(
+        icon = Icons.Outlined.PublicOff,
+        title = homeText("Prevent IPv6 Leak", "جلوگیری از نشت IPv6"),
+        summary = summary,
+        enabled = settings.ipv6Block,
+        help = homeText(
+            "Drops all IPv6 on the tunnel so your real IPv6 address cannot leak.",
+            "تمام ارتباطات IPv6 را در تونل مسدود می‌کند تا از لو رفتن آی‌پی واقعی شما جلوگیری شود.",
+        ),
+        showDivider = showDivider,
+        onCheckedChange = { checked ->
+            store.setIpv6Block(checked)
+            VpnController.applyNetworkGuard(context)
+        },
+    )
+}
+
+@Composable
+private fun GpsSpoofSettingsRow(showDivider: Boolean) {
+    val context = LocalContext.current
+    val isPersian = LocalHomePersian.current
+    val store = remember(context) { GpsSpoofStore.get(context) }
+    val enabled by store.enabled.collectAsStateWithLifecycle()
+    val connection by ConnectionStateStore.state.collectAsStateWithLifecycle()
+    val engineMode by remember(context) { EngineModeStore.get(context) }.mode.collectAsStateWithLifecycle()
+    val torSettings by remember(context) { TorEngineStore.get(context) }.settings.collectAsStateWithLifecycle()
+    val powSettings by remember(context) { PowEngineStore.get(context) }.settings.collectAsStateWithLifecycle()
+    val exitState by remember(context) { ExitIpInfoRepository.get(context) }.state.collectAsStateWithLifecycle()
+    val profileCountry = remember(engineMode, connection) {
+        ProfileStore(context).selectedProfile().country.countryCode
+    }
+    val countryCode = GpsSpoofTarget.countryCode(
+        engine = engineMode,
+        profileCountry = profileCountry,
+        torExit = torSettings.exitCountryCode,
+        powExit = powSettings.exitCountryCode,
+        exitIpCountry = exitState.info?.countryCode,
+    )
+    val countryName = GpsSpoofTarget.displayName(countryCode, isPersian)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var mockAllowed by remember { mutableStateOf(GpsSpoofRuntime.isMockLocationAllowed(context)) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                mockAllowed = GpsSpoofRuntime.isMockLocationAllowed(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    val needsSetup = enabled && !mockAllowed
+    val summary = when {
+        !enabled -> homeText("Off", "خاموش")
+        needsSetup -> homeText("Needs setup", "نیاز به تنظیم")
+        connection != ConnectionState.CONNECTED -> homeText("After connect", "بعد از وصل")
+        countryName.isNotBlank() -> countryName
+        else -> homeText("Waiting…", "منتظر…")
+    }
+    SettingsToggleRow(
+        icon = Icons.Outlined.MyLocation,
+        title = homeText("GPS location", "موقعیت GPS"),
+        summary = summary,
+        enabled = enabled,
+        summaryColor = when {
+            needsSetup -> XioColors.DisconnectingAmber
+            enabled && connection == ConnectionState.CONNECTED && mockAllowed && countryCode != null ->
+                XioColors.ConnectedGreen
+            enabled -> XioColors.TextSecondary
+            else -> XioColors.TextSecondary
+        },
+        help = homeText(
+            "Apps see the selected country, not your real location.",
+            "برنامه‌ها کشور انتخاب‌شده را می‌بینند، نه جای واقعی تو.",
+        ),
+        extra = if (needsSetup) {
+            {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(XioColors.DisconnectingAmber.copy(alpha = 0.10f))
+                        .clickable { GpsSpoofRuntime.openDeveloperSettings(context) }
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        Icons.Outlined.WarningAmber,
+                        contentDescription = null,
+                        tint = XioColors.DisconnectingAmber,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Text(
+                        homeText("Set as mock location", "mock location را همین برنامه بگذار"),
+                        color = XioColors.TextPrimary,
+                        fontSize = 12.sp,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        } else null,
+        autoExpand = needsSetup,
+        showDivider = showDivider,
+        onCheckedChange = { store.setEnabled(it) },
+    )
+}
+
+@Composable
+private fun LanShareEndpointPanel(
+    ip: String?,
+    port: Int,
+    connected: Boolean,
+    needsWifi: Boolean,
+) {
+    val context = LocalContext.current
+    var copied by remember { mutableStateOf(false) }
+    val ready = !ip.isNullOrBlank()
+    val copyValue = if (ready) "$ip:$port" else null
+    val ipText = ip ?: when {
+        !connected -> homeText("Connect VPN first", "اول VPN را وصل کن")
+        needsWifi -> homeText("Needs Wi‑Fi", "وای‌فای لازم است")
+        else -> homeText("Waiting…", "منتظر…")
+    }
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        LanShareValueRow(homeText("Type", "نوع"), "SOCKS5", ready = true)
+        LanShareValueRow(homeText("IP", "آی‌پی"), ipText, ready = ready)
+        LanShareValueRow(homeText("Port", "پورت"), port.toString(), ready = true)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color.White.copy(alpha = if (ready) 0.08f else 0.04f))
+                .clickable(enabled = copyValue != null) {
+                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                        as android.content.ClipboardManager
+                    clipboard.setPrimaryClip(
+                        android.content.ClipData.newPlainText("XioVPN SOCKS5", copyValue),
+                    )
+                    copied = true
+                }
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                Icons.Outlined.ContentCopy,
+                contentDescription = null,
+                tint = if (ready) XioColors.ConnectedGreen else XioColors.TextSecondary,
+                modifier = Modifier.size(16.dp),
+            )
+            Text(
+                when {
+                    !ready -> homeText("IP appears after connect", "آی‌پی بعد از وصل شدن می‌آید")
+                    copied -> homeText("Copied $copyValue", "کپی شد $copyValue")
+                    else -> homeText("Copy $copyValue", "کپی $copyValue")
+                },
+                color = XioColors.TextPrimary,
+                fontSize = 12.sp,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun LanShareValueRow(
+    caption: String,
+    value: String,
+    ready: Boolean,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            caption,
+            color = XioColors.TextSecondary,
+            fontSize = 12.sp,
+            modifier = Modifier.width(52.dp),
+        )
+        Text(
+            value,
+            color = if (ready) XioColors.TextPrimary else XioColors.TextSecondary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            fontFamily = if (ready) FontFamily.Monospace else homeLocalizedFont(),
+            textAlign = TextAlign.Start,
+            style = LocalTextStyle.current.copy(textDirection = TextDirection.Ltr),
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun SettingsGroup(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            title,
+            color = XioColors.TextSecondary.copy(alpha = 0.78f),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            lineHeight = 16.sp,
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 6.dp),
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(SettingsGroupShape)
+                .background(SettingsGroupColor)
+                .animateContentSize(),
+            content = content,
+        )
+    }
+}
+
+@Composable
+private fun SettingsToggleRow(
+    icon: ImageVector,
+    title: String,
+    summary: String,
+    enabled: Boolean,
+    help: String,
+    showDivider: Boolean,
+    extra: (@Composable () -> Unit)? = null,
+    autoExpand: Boolean = false,
+    summaryColor: Color? = null,
+    onCheckedChange: ((Boolean) -> Unit)? = null,
+) {
+    var expanded by remember { mutableStateOf(autoExpand) }
+    LaunchedEffect(autoExpand) {
+        if (autoExpand) expanded = true
+    }
+    val statusColor = summaryColor ?: if (enabled) XioColors.ConnectedGreen else XioColors.TextSecondary
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 12.dp, end = 6.dp, top = 7.dp, bottom = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { expanded = !expanded },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SettingsRowIcon(icon, enabled)
+                Spacer(Modifier.size(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        title,
+                        color = XioColors.TextPrimary,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium,
+                        lineHeight = 19.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        summary,
+                        color = statusColor,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Spacer(Modifier.size(4.dp))
+                Box(
+                    modifier = Modifier.size(22.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                        contentDescription = null,
+                        tint = XioColors.TextSecondary.copy(alpha = 0.72f),
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+            if (onCheckedChange != null) {
+                Switch(
+                    checked = enabled,
+                    onCheckedChange = onCheckedChange,
+                    colors = SwitchDefaults.colors(
+                        checkedTrackColor = XioColors.ConnectedGreen,
+                        checkedThumbColor = Color.White,
+                        uncheckedTrackColor = Color.White.copy(alpha = 0.12f),
+                        uncheckedThumbColor = Color.White.copy(alpha = 0.88f),
+                        uncheckedBorderColor = Color.Transparent,
+                    ),
+                )
+            }
+        }
+        if (expanded) {
+            Column(
+                modifier = Modifier.padding(start = 50.dp, end = 14.dp, bottom = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    help,
+                    color = XioColors.TextSecondary,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                extra?.invoke()
+            }
+        }
+        if (showDivider) SettingsHairline()
+    }
+}
+
+@Composable
+private fun SettingsNavRow(
+    icon: ImageVector,
+    title: String,
+    summary: String,
+    isPersian: Boolean,
+    showDivider: Boolean,
+    onClick: () -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SettingsRowIcon(icon, enabled = false)
+            Spacer(Modifier.size(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    title,
+                    color = XioColors.TextPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    summary,
+                    color = XioColors.TextSecondary,
+                    fontSize = 12.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Icon(
+                if (isPersian) Icons.Outlined.ChevronLeft else Icons.Outlined.ChevronRight,
+                contentDescription = null,
+                tint = XioColors.TextSecondary.copy(alpha = 0.7f),
+                modifier = Modifier.size(18.dp),
+            )
+        }
+        if (showDivider) SettingsHairline()
+    }
+}
+
+@Composable
+private fun CrashReportSettingsRow(showDivider: Boolean) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var copied by remember { mutableStateOf(false) }
+    var hasReport by remember { mutableStateOf(CrashReportStore.hasReport(context)) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                hasReport = CrashReportStore.hasReport(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    SettingsNavRow(
+        icon = Icons.Outlined.ContentCopy,
+        title = homeText("Copy crash report", "کپی گزارش کرش"),
+        summary = when {
+            copied -> homeText("Copied — paste it in a message", "کپی شد — در پیام بچسبان")
+            hasReport -> homeText("Last crash is ready to send", "آخرین کرش آماده ارسال است")
+            else -> homeText("No crash recorded yet", "کرشی ثبت نشده")
+        },
+        isPersian = LocalHomePersian.current,
+        showDivider = showDivider,
+        onClick = {
+            val payload = CrashReportStore.copyPayload(context)
+            if (payload.isNullOrBlank()) {
+                hasReport = false
+                copied = false
+            } else {
+                context.getSystemService(ClipboardManager::class.java)
+                    ?.setPrimaryClip(ClipData.newPlainText("XioVPN crash report", payload))
+                hasReport = true
+                copied = true
+            }
+        },
+    )
+}
+
+@Composable
+private fun QuickSettingsTileRow(
+    notice: String?,
+    showDivider: Boolean,
+    onAdd: () -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth().animateContentSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onAdd)
+                .padding(start = 12.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SettingsRowIcon(Icons.Outlined.DashboardCustomize, enabled = false)
+            Spacer(Modifier.size(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    homeText("Quick Settings tile", "دکمه تنظیمات سریع"),
+                    color = XioColors.TextPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    homeText("From the notification shade", "از پنل بالای گوشی"),
+                    color = XioColors.TextSecondary,
+                    fontSize = 12.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(XioColors.ConnectedGreen)
+                    .clickable(onClick = onAdd),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Outlined.Add,
+                    contentDescription = homeText("Add", "افزودن"),
+                    tint = Color.Black,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+        notice?.let { message ->
+            Text(
+                message,
+                color = XioColors.TextSecondary,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                modifier = Modifier.padding(start = 50.dp, end = 14.dp, bottom = 10.dp),
+            )
+        }
+        if (showDivider) SettingsHairline()
+    }
+}
+
+@Composable
+private fun SettingsRowIcon(icon: ImageVector, enabled: Boolean) {
+    val tint = if (enabled) XioColors.ConnectedGreen else XioColors.TextSecondary
+    Box(
+        modifier = Modifier
+            .size(28.dp)
+            .background(tint.copy(alpha = 0.12f), RoundedCornerShape(8.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
+    }
+}
+
+@Composable
+private fun SettingsHairline() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 50.dp)
+            .height(0.6.dp)
+            .background(SettingsHairlineColor),
+    )
+}
+
+private enum class TileRequestResult { ADDED, ALREADY_ADDED, NOT_ADDED, ADD_MANUALLY, ERROR }
+
+private fun requestQuickSettingsTile(
+    context: android.content.Context,
+    onResult: (TileRequestResult) -> Unit,
+) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+        onResult(TileRequestResult.ADD_MANUALLY)
+        return
+    }
+    runCatching {
+        val statusBarManager = context.getSystemService(StatusBarManager::class.java)
+            ?: error("StatusBarManager unavailable")
+        statusBarManager.requestAddTileService(
+            ComponentName(context, XioVpnQuickSettingsTileService::class.java),
+            context.getString(R.string.quick_settings_tile_label),
+            Icon.createWithResource(context, R.drawable.ic_stat_vpn),
+            context.mainExecutor,
+        ) { result ->
+            onResult(
+                when (result) {
+                    StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ADDED -> TileRequestResult.ADDED
+                    StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ALREADY_ADDED -> TileRequestResult.ALREADY_ADDED
+                    StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_NOT_ADDED -> TileRequestResult.NOT_ADDED
+                    else -> TileRequestResult.ERROR
+                },
+            )
+        }
+    }.onFailure { onResult(TileRequestResult.ERROR) }
+}

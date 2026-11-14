@@ -1,0 +1,630 @@
+package com.xiovpn.mobile.profiles
+
+import java.net.URI
+import java.net.URLDecoder
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
+import java.util.UUID
+import com.xiovpn.mobile.logging.AppLogRepository
+import com.xiovpn.mobile.logging.LogSource
+import org.json.JSONObject
+
+/** Link parameters beyond the classic transport fields (ECH, per-link TLS tuning, REALITY). */
+internal data class LinkExtras(
+    val ech: String = "",
+    val cipherSuites: String = "",
+    val finalmask: String = "",
+    val realityPublicKey: String = "",
+    val realityShortId: String = "",
+    val realitySpiderX: String = "",
+)
+
+object ProfileUriParser {
+    private val recognizedKeys = setOf(
+        "type", "network", "security", "sni", "servername", "host", "path", "alpn", "fp", "fingerprint",
+        "flow", "encryption", "servicename", "authority", "headertype", "mode", "extra", "packetencoding",
+        "allowinsecure", "insecure", "country", "countrycode", "cc", "location",
+        "ech", "echcl", "echconfiglist", "cs", "ciphersuites", "cipher", "fm", "finalmask",
+        "pbk", "publickey", "sid", "shortid", "spx", "spiderx",
+        // Accepted and dropped: fragmentation is chosen per operator by the adaptive tester.
+        "fragment", "fragment2",
+    )
+
+    private val REALITY_KEY = Regex("^[A-Za-z0-9_-]{43}=?$")
+    private val REALITY_SHORT_ID = Regex("^[0-9a-fA-F]{0,16}$")
+
+    /**
+     * Unknown keys (e.g. `Telegram=@channel` junk) are logged and ignored instead of rejecting
+     * an otherwise valid link.
+     */
+    private fun reportUnknownKeys(keys: Set<String>) {
+        val unknown = keys - recognizedKeys
+        if (unknown.isEmpty()) return
+        runCatching {
+            AppLogRepository.info(LogSource.APP, "Profile link: ignored unknown parameters ${unknown.joinToString()}")
+        }
+    }
+
+    internal fun extractExtras(query: Map<String, String>, security: String): LinkExtras {
+        // URLDecoder turns a literal '+' into a space; neither ECH values nor cipher lists contain spaces.
+        val ech = (query["ech"] ?: query["echcl"] ?: query["echconfiglist"]).orEmpty().trim().replace(' ', '+')
+        val cipherSuites = (query["cs"] ?: query["ciphersuites"] ?: query["cipher"]).orEmpty().trim()
+            .replace(' ', ':').replace(',', ':')
+        val finalmask = normalizeFinalmask((query["fm"] ?: query["finalmask"]).orEmpty())
+        if (security != "reality") {
+            return LinkExtras(ech = ech, cipherSuites = cipherSuites, finalmask = finalmask)
+        }
+        val publicKey = (query["pbk"] ?: query["publickey"]).orEmpty().trim()
+        require(REALITY_KEY.matches(publicKey)) { "REALITY needs a valid pbk public key (TLS/none links need no key)" }
+        val shortId = (query["sid"] ?: query["shortid"]).orEmpty().trim()
+        require(REALITY_SHORT_ID.matches(shortId) && shortId.length % 2 == 0) { "REALITY sid must be even-length hex up to 16 chars" }
+        return LinkExtras(
+            ech = "",
+            cipherSuites = "",
+            finalmask = finalmask,
+            realityPublicKey = publicKey,
+            realityShortId = shortId.lowercase(),
+            realitySpiderX = (query["spx"] ?: query["spiderx"]).orEmpty().trim(),
+        )
+    }
+
+    /** `fm` is a finalmask JSON object; invalid or empty values are dropped, not fatal. */
+    internal fun normalizeFinalmask(raw: String): String {
+        val trimmed = raw.trim()
+        if (trimmed.isBlank()) return ""
+        val compact = compactJsonObject(trimmed)
+        if (compact == null) {
+            runCatching { AppLogRepository.info(LogSource.APP, "Profile link: ignored invalid fm JSON") }
+            return ""
+        }
+        return if (compact == "{}") "" else compact
+    }
+
+    /**
+     * Strips whitespace outside strings and checks bracket balance. Kept free of org.json so it
+     * behaves identically in JVM unit tests; Xray does the full schema validation.
+     */
+    private fun compactJsonObject(raw: String): String? {
+        if (!raw.startsWith("{") || !raw.endsWith("}")) return null
+        val out = StringBuilder(raw.length)
+        val stack = ArrayDeque<Char>()
+        var inString = false
+        var escaped = false
+        for (ch in raw) {
+            if (inString) {
+                out.append(ch)
+                when {
+                    escaped -> escaped = false
+                    ch == '\\' -> escaped = true
+                    ch == '"' -> inString = false
+                }
+                continue
+            }
+            when (ch) {
+                ' ', '\t', '\r', '\n' -> continue
+                '"' -> inString = true
+                '{', '[' -> stack.addLast(ch)
+                '}' -> if (stack.removeLastOrNull() != '{') return null
+                ']' -> if (stack.removeLastOrNull() != '[') return null
+            }
+            out.append(ch)
+        }
+        if (inString || stack.isNotEmpty()) return null
+        return out.toString()
+    }
+
+    internal fun lenientMode(raw: String): String =
+        runCatching { ProfileNetworks.normalizeMode(raw) }.getOrDefault("")
+
+    internal fun lenientPacketEncoding(raw: String): String =
+        runCatching { ProfileNetworks.normalizePacketEncoding(raw) }.getOrDefault("")
+
+    /** Xray dropped the HTTP/2 transport; silently rewriting it to another transport cannot work. */
+    internal fun rejectRemovedTransport(raw: String?) {
+        val value = raw.orEmpty().trim().lowercase()
+        require(value != "h2" && value != "http") {
+            "HTTP/2 transport (type=$value) was removed from Xray-core; use an xhttp or ws link"
+        }
+    }
+    /**
+     * uTLS profiles Xray-core accepts. Anything else falls back to Chrome; `unsafe` (Go TLS) is kept
+     * only when the link pins its own cipher list or finalmask, which is what it exists for.
+     */
+    private val KNOWN_FINGERPRINTS = setOf(
+        "chrome", "firefox", "safari", "ios", "android", "edge", "360", "qq", "random", "randomized",
+    )
+
+    internal fun normalizeFingerprint(raw: String, keepUnsafe: Boolean = false): String {
+        val value = raw.trim().lowercase()
+        if (keepUnsafe && value == "unsafe") return value
+        return value.takeIf { it in KNOWN_FINGERPRINTS } ?: "chrome"
+    }
+
+    /**
+     * Plain configs are accepted alongside TLS ones. `reality` and `xtls` stay rejected because
+     * they need key material and a handshake this engine does not build.
+     */
+    internal fun normalizeSecurity(raw: String?): String {
+        val security = raw.orEmpty().trim().lowercase().ifBlank { "tls" }
+        return when (security) {
+            "tls" -> "tls"
+            "reality" -> "reality"
+            "none", "" -> "none"
+            else -> throw IllegalArgumentException("Unsupported security '$security'; use TLS, REALITY or none")
+        }
+    }
+
+    /**
+     * `http` header obfuscation over raw TCP is a real transport, not a decoration: the server
+     * expects the disguised request, so dropping it would break the config. On xhttp the same
+     * key means something else and is handled by the mode resolver.
+     */
+    internal fun normalizeHeaderType(raw: String?, network: String): String {
+        val headerType = raw.orEmpty().trim().lowercase()
+        if (ProfileNetworks.isXhttp(network)) return headerType
+        return when (headerType) {
+            "http" -> {
+                require(network == "tcp") { "http header obfuscation needs type=tcp, not $network" }
+                "http"
+            }
+            // `none` is plain TCP; other header types are meaningless here and ignored.
+            else -> ""
+        }
+    }
+
+    fun parse(raw: String, id: String = newId(), nameOverride: String? = null): ProxyProfile {
+        val text = raw.trim()
+        require(text.isNotEmpty()) { "Configuration URI is empty" }
+        if (text.startsWith("vmess://", ignoreCase = true)) {
+            return parseVmess(text, id, nameOverride)
+        }
+        if (text.startsWith("wireguard://", ignoreCase = true) ||
+            text.startsWith("wg://", ignoreCase = true)
+        ) {
+            return parseWireGuard(text, id, nameOverride)
+        }
+        val uri = runCatching { URI(text) }.getOrElse { throw IllegalArgumentException("Malformed configuration URI") }
+        val protocol = when (uri.scheme?.lowercase()) {
+            "trojan" -> ProxyProtocol.TROJAN
+            "vless" -> ProxyProtocol.VLESS
+            else -> throw IllegalArgumentException("Only VLESS, Trojan and VMess configurations are supported")
+        }
+        val credential = decode(uri.rawUserInfo.orEmpty()).trim()
+        require(credential.isNotEmpty()) {
+            if (protocol == ProxyProtocol.VLESS) "VLESS UUID is missing" else "Trojan password is missing"
+        }
+        if (protocol == ProxyProtocol.VLESS) {
+            require(runCatching { UUID.fromString(credential) }.isSuccess) { "VLESS UUID is invalid" }
+        }
+
+        val sourceServerHost = uri.host?.trim()?.removePrefix("[")?.removeSuffix("]").orEmpty()
+        require(sourceServerHost.isNotEmpty()) { "Server host is missing or invalid" }
+        val sourceServerPort = if (uri.port == -1) 443 else uri.port
+        require(sourceServerPort in 1..65535) { "Server port is invalid" }
+        val query = parseQuery(uri.rawQuery)
+        reportUnknownKeys(query.keys)
+
+        rejectRemovedTransport(query["type"] ?: query["network"])
+        val network = ProfileNetworks.requireSupported(query["type"] ?: query["network"] ?: "ws")
+        val security = normalizeSecurity(query["security"])
+        val headerType = normalizeHeaderType(query["headertype"], network)
+        val extras = extractExtras(query, security)
+
+        // VLESS `none` is the norm; other values (post-quantum encryption) are stored verbatim.
+        val encryption = query["encryption"].orEmpty().trim().ifBlank { "none" }
+            .let { if (it.equals("none", ignoreCase = true)) "none" else it }
+        val flow = query["flow"].orEmpty()
+        val sni = query["sni"].orEmpty()
+            .ifBlank { query["servername"].orEmpty() }
+            .ifBlank { query["host"].orEmpty() }
+            .ifBlank { sourceServerHost }
+        val host = query["host"].orEmpty().ifBlank { sni }
+        val path = normalizePath(query["path"].orEmpty(), network)
+        val alpn = TlsAlpnResolver.canonicalString(query["alpn"].orEmpty(), network)
+        val fingerprint = normalizeFingerprint(
+            query["fp"].orEmpty().ifBlank { query["fingerprint"].orEmpty() },
+            keepUnsafe = extras.cipherSuites.isNotBlank() || extras.finalmask.isNotBlank(),
+        )
+        val allowInsecure = parseBoolean(query["allowinsecure"] ?: query["insecure"])
+        val serviceName = query["servicename"].orEmpty()
+        val authority = query["authority"].orEmpty()
+        val xhttpMode = if (ProfileNetworks.isXhttp(network)) {
+            lenientMode(query["mode"].orEmpty())
+                .ifBlank { ProfileNetworks.optionalMode(headerType) }
+        } else {
+            ""
+        }
+        val xhttpExtra = if (ProfileNetworks.isXhttp(network)) {
+            ProfileNetworks.normalizeExtra(query["extra"].orEmpty())
+        } else {
+            ""
+        }
+        val packetEncoding = lenientPacketEncoding(query["packetencoding"].orEmpty())
+        val country = CountryMetadata.resolve(
+            code = query["countrycode"] ?: query["cc"],
+            name = query["country"] ?: query["location"],
+        )
+        if (network == "grpc") require(serviceName.isNotBlank()) { "gRPC serviceName is missing" }
+
+        val fragmentName = decode(uri.rawFragment.orEmpty()).trim()
+        val name = nameOverride?.trim().orEmpty().ifBlank {
+            fragmentName.ifBlank { "${protocol.name} • $sourceServerHost" }
+        }.take(80)
+
+        return ProxyProfile(
+            id = id,
+            name = name,
+            protocol = protocol,
+            credential = credential,
+            serverHost = LocalForwardProfile.HOST,
+            serverPort = LocalForwardProfile.PORT,
+            network = network,
+            security = security,
+            sni = sni,
+            host = host,
+            path = path,
+            alpn = alpn,
+            fingerprint = fingerprint,
+            allowInsecure = allowInsecure,
+            flow = flow,
+            encryption = encryption,
+            alterId = 0,
+            serviceName = serviceName,
+            authority = authority,
+            xhttpMode = xhttpMode,
+            xhttpExtra = xhttpExtra,
+            packetEncoding = packetEncoding,
+            headerType = headerType,
+            ech = extras.ech,
+            cipherSuites = extras.cipherSuites,
+            finalmask = extras.finalmask,
+            realityPublicKey = extras.realityPublicKey,
+            realityShortId = extras.realityShortId,
+            realitySpiderX = extras.realitySpiderX,
+            country = country,
+            rawUri = text,
+        )
+    }
+
+    
+    fun parseForSniMaker(raw: String, id: String = newId()): ProxyProfile {
+        val clean = raw.trim().replace("&amp;", "&", ignoreCase = true)
+        return runCatching { parse(clean, id = id) }.getOrElse {
+            if (clean.startsWith("vmess://", ignoreCase = true)) {
+                parse(coerceVmessToSni(clean), id = id)
+            } else {
+                parse(coerceUriToSni(clean), id = id)
+            }
+        }
+    }
+
+    fun extractUris(text: String): List<String> {
+        val matcher = Regex("(?i)(?:vless|trojan|vmess)://[^\\s<>\\\"']+")
+        return matcher.findAll(text)
+            .map { it.value.trim().trimEnd(',', ';', ')', ']', '}') }
+            .distinct()
+            .toList()
+    }
+
+    fun canonicalUri(profile: ProxyProfile): String {
+        if (profile.usesAdvancedSettingsIdentity()) return ""
+        if (profile.rawUri.isNotBlank()) return profile.rawUri
+        if (profile.protocol == ProxyProtocol.VMESS) {
+            val payload = JSONObject()
+                .put("v", "2")
+                .put("ps", profile.name)
+                .put("add", profile.serverHost)
+                .put("port", profile.serverPort.toString())
+                .put("id", profile.credential)
+                .put("aid", profile.alterId.toString())
+                .put("scy", profile.encryption.ifBlank { "auto" })
+                .put("net", profile.network)
+                .put(
+                    "type",
+                    when {
+                        ProfileNetworks.isXhttp(profile.network) -> profile.xhttpMode.ifBlank { "none" }
+                        profile.headerType.isNotBlank() -> profile.headerType
+                        else -> "none"
+                    },
+                )
+                .put("host", profile.host)
+                .put("path", profile.path)
+                .put("tls", profile.security)
+                .put("sni", profile.sni)
+                .put("alpn", profile.alpn)
+                .put("fp", profile.fingerprint)
+                .apply {
+                    if (profile.xhttpExtra.isNotBlank()) put("extra", profile.xhttpExtra)
+                    if (profile.packetEncoding.isNotBlank()) put("packetEncoding", profile.packetEncoding)
+                    profile.country.countryCode?.let { put("countryCode", it) }
+                }
+                .toString()
+            return "vmess://${Base64Codec.encode(payload.toByteArray(Charsets.UTF_8))}"
+        }
+        val query = linkedMapOf(
+            "type" to profile.network,
+            "security" to profile.security,
+            "sni" to profile.sni,
+            "host" to profile.host,
+            "path" to profile.path,
+            "alpn" to profile.alpn,
+            "fp" to profile.fingerprint,
+        )
+        if (profile.protocol == ProxyProtocol.VLESS) query["encryption"] = profile.encryption
+        if (profile.allowInsecure) query["allowInsecure"] = "1"
+        if (profile.flow.isNotBlank()) query["flow"] = profile.flow
+        if (profile.serviceName.isNotBlank()) query["serviceName"] = profile.serviceName
+        if (profile.authority.isNotBlank()) query["authority"] = profile.authority
+        if (profile.xhttpMode.isNotBlank()) query["mode"] = profile.xhttpMode
+        if (profile.xhttpExtra.isNotBlank()) query["extra"] = profile.xhttpExtra
+        if (profile.packetEncoding.isNotBlank()) query["packetEncoding"] = profile.packetEncoding
+        if (profile.headerType.isNotBlank()) query["headerType"] = profile.headerType
+        if (profile.ech.isNotBlank()) query["ech"] = profile.ech
+        if (profile.cipherSuites.isNotBlank()) query["cs"] = profile.cipherSuites
+        if (profile.finalmask.isNotBlank()) query["fm"] = profile.finalmask
+        if (profile.realityPublicKey.isNotBlank()) query["pbk"] = profile.realityPublicKey
+        if (profile.realityShortId.isNotBlank()) query["sid"] = profile.realityShortId
+        if (profile.realitySpiderX.isNotBlank()) query["spx"] = profile.realitySpiderX
+        profile.country.countryCode?.let { query["countryCode"] = it }
+        if (profile.country.isKnown) query["country"] = profile.country.countryName
+        val encodedQuery = query.entries.joinToString("&") { (key, value) -> "$key=${encode(value)}" }
+        val host = if (profile.serverHost.contains(':')) "[${profile.serverHost}]" else profile.serverHost
+        return "${profile.protocol.wireName}://${encode(profile.credential)}@$host:${profile.serverPort}?$encodedQuery#${encode(profile.name)}"
+    }
+
+    private fun parseQuery(raw: String?): Map<String, String> {
+        if (raw.isNullOrBlank()) return emptyMap()
+        val result = LinkedHashMap<String, String>()
+        raw.split('&').filter { it.isNotBlank() }.forEach { part ->
+            val split = part.split('=', limit = 2)
+            val key = decode(split[0]).trim().lowercase()
+            if (key.isBlank()) return@forEach
+            val value = decode(split.getOrElse(1) { "" })
+            // Duplicates: the first non-blank value wins.
+            if (result[key].isNullOrBlank()) result[key] = value
+        }
+        return result
+    }
+
+    /**
+     * Parses a WireGuard link.
+     *
+     * Accepted shape (the one wg-quick / most panels export as a URI):
+     *
+     *   wireguard://<peer-public-key>@<host>:<port>?privateKey=<b64>
+     *       &presharedKey=<b64>&address=<cidr>&allowedIPs=<cidrs>&keepAlive=<s>
+     *       &reserved=<a,b,c>&name=<label>
+     *
+     * `privateKey` may also arrive as the user-info when the peer key is given
+     * as `publicKey`. An endpoint without an explicit private key is rejected,
+     * because the core cannot build a handshake without it.
+     */
+    private fun parseWireGuard(text: String, id: String, nameOverride: String?): ProxyProfile {
+        val uri = runCatching { URI(text) }.getOrElse {
+            throw IllegalArgumentException("Malformed WireGuard link")
+        }
+        val query = parseQuery(uri.rawQuery)
+        val host = uri.host?.trim()?.removePrefix("[")?.removeSuffix("]").orEmpty()
+        require(host.isNotEmpty()) { "WireGuard endpoint host is missing" }
+        val port = if (uri.port == -1) 51820 else uri.port
+        require(port in 1..65535) { "WireGuard endpoint port is invalid" }
+
+        val userInfo = decode(uri.rawUserInfo.orEmpty()).trim()
+        // Base64 keys use '+' which URLDecoder already turned into a space (panels
+        // send keys unencoded); a space can never be part of base64, so map back.
+        fun b64(raw: String?) = raw.orEmpty().trim().replace(' ', '+')
+        val peerKey = b64(query["publickey"] ?: query["peer"] ?: userInfo)
+        val privateKey = b64(query["privatekey"] ?: query["private"])
+        require(peerKey.isNotEmpty()) { "WireGuard peer public key is missing" }
+        require(privateKey.isNotEmpty()) { "WireGuard private key is missing" }
+
+        val reserved = query["reserved"].orEmpty()
+        val name = nameOverride
+            ?: query["name"]?.takeIf { it.isNotBlank() }
+            ?: query["remarks"]?.takeIf { it.isNotBlank() }
+            ?: "WireGuard · $host"
+
+        return ProxyProfile(
+            id = id,
+            name = name,
+            protocol = ProxyProtocol.WIREGUARD,
+            credential = peerKey,
+            serverHost = host,
+            serverPort = port,
+            network = "udp",
+            security = "none",
+            sni = "",
+            host = host,
+            path = "",
+            alpn = "",
+            fingerprint = "",
+            allowInsecure = false,
+            wgPrivateKey = privateKey,
+            wgPresharedKey = b64(query["presharedkey"] ?: query["psk"]),
+            wgPeerPublicKey = peerKey,
+            wgAllowedIps = (query["allowedips"] ?: "").orEmpty(),
+            // WARP encodes its 3-byte "reserved" value in the endpoint's serviceName.
+            serviceName = reserved,
+            wgKeepAlive = (query["keepalive"] ?: query["persistentkeepalive"] ?: "0")
+                .toIntOrNull() ?: 0,
+            rawUri = text,
+        )
+    }
+
+    private fun parseVmess(text: String, id: String, nameOverride: String?): ProxyProfile {
+        val encoded = text.substringAfter("://").substringBefore('#').trim()
+        val json = runCatching {
+            JSONObject(Base64Codec.decode(encoded).toString(Charsets.UTF_8))
+        }.getOrElse { throw IllegalArgumentException("Invalid VMess Base64 payload") }
+        val credential = json.optString("id").trim()
+        require(runCatching { UUID.fromString(credential) }.isSuccess) { "VMess UUID is invalid" }
+        val sourceHost = json.optString("add").trim()
+        require(sourceHost.isNotBlank()) { "VMess server host is missing" }
+        val sourcePort = json.optString("port", "443").toIntOrNull() ?: json.optInt("port", 443)
+        require(sourcePort in 1..65_535) { "VMess server port is invalid" }
+        rejectRemovedTransport(json.optString("net"))
+        val network = ProfileNetworks.requireSupported(json.optString("net", "ws"), "VMess transport")
+        val security = normalizeSecurity(json.optString("tls"))
+        val sni = json.optString("sni").ifBlank { json.optString("host") }.ifBlank { sourceHost }
+        val host = json.optString("host").ifBlank { sni }
+        val path = normalizePath(json.optString("path"), network)
+        val headerType = json.optString("type")
+        val serviceName = if (network == "grpc") json.optString("path").removePrefix("/") else ""
+        if (network == "grpc") require(serviceName.isNotBlank()) { "gRPC serviceName is missing" }
+        val tcpHeaderType = normalizeHeaderType(headerType, network)
+        val xhttpMode = if (ProfileNetworks.isXhttp(network)) {
+            ProfileNetworks.vmessMode(headerType, json.optString("mode"))
+        } else {
+            ""
+        }
+        val xhttpExtra = if (ProfileNetworks.isXhttp(network)) {
+            ProfileNetworks.normalizeExtra(json.optString("extra"))
+        } else {
+            ""
+        }
+        val packetEncoding = lenientPacketEncoding(json.optString("packetEncoding"))
+        val country = CountryMetadata.resolve(json.optString("countryCode"), json.optString("country"))
+        val name = nameOverride?.trim().orEmpty().ifBlank {
+            json.optString("ps").trim().ifBlank { "VMESS • $sourceHost" }
+        }.take(80)
+        return ProxyProfile(
+            id = id,
+            name = name,
+            protocol = ProxyProtocol.VMESS,
+            credential = credential,
+            serverHost = LocalForwardProfile.HOST,
+            serverPort = LocalForwardProfile.PORT,
+            network = network,
+            security = security,
+            sni = sni,
+            host = host,
+            path = path,
+            alpn = json.optString("alpn").ifBlank { TlsAlpnResolver.canonicalString("", network) },
+            fingerprint = normalizeFingerprint(json.optString("fp")),
+            allowInsecure = parseBoolean(json.optString("allowInsecure")),
+            headerType = tcpHeaderType,
+            encryption = json.optString("scy", "auto").ifBlank { "auto" },
+            alterId = json.optString("aid", "0").toIntOrNull()?.coerceAtLeast(0) ?: 0,
+            serviceName = serviceName,
+            xhttpMode = xhttpMode,
+            xhttpExtra = xhttpExtra,
+            packetEncoding = packetEncoding,
+            country = country,
+            rawUri = text,
+        )
+    }
+
+    private fun normalizePath(raw: String, network: String): String {
+        if (network == "tcp" || network == "grpc") return raw
+        val value = raw.ifBlank { "/" }
+        return if (value.startsWith('/')) value else "/$value"
+    }
+
+    private fun coerceUriToSni(text: String): String {
+        val uri = runCatching { URI(text) }
+            .getOrElse { throw IllegalArgumentException("Malformed configuration URI") }
+        val scheme = uri.scheme?.lowercase()
+        require(scheme == "vless" || scheme == "trojan") { "Unsupported configuration protocol" }
+        val credential = uri.rawUserInfo.orEmpty()
+        val sourceHost = uri.host?.removePrefix("[")?.removeSuffix("]").orEmpty()
+        require(sourceHost.isNotBlank()) { "Server host is missing or invalid" }
+        val sourcePort = if (uri.port in 1..65_535) uri.port else 443
+        val query = parseQueryLenient(uri.rawQuery)
+        val sourceNetwork = (query["type"] ?: query["network"] ?: "ws").lowercase()
+        val network = when (sourceNetwork) {
+            "ws", "tcp", "httpupgrade", "grpc", "xhttp" -> sourceNetwork
+            "splithttp" -> "xhttp"
+            "h2", "http" -> { rejectRemovedTransport(sourceNetwork); sourceNetwork }
+            "raw", "none" -> "tcp"
+            else -> if (query["host"].orEmpty().isNotBlank() || query["path"].orEmpty().isNotBlank()) "ws" else "tcp"
+        }
+        val sni = query["sni"].orEmpty()
+            .ifBlank { query["servername"].orEmpty() }
+            .ifBlank { query["host"].orEmpty() }
+            .ifBlank { sourceHost }
+        val host = query["host"].orEmpty().ifBlank { sni }
+        val serviceName = query["servicename"].orEmpty()
+            .ifBlank { if (network == "grpc") query["path"].orEmpty().removePrefix("/") else "" }
+        val sanitized = linkedMapOf(
+            "type" to network,
+            "security" to "tls",
+            "sni" to sni,
+            "host" to host,
+            "path" to query["path"].orEmpty(),
+            "alpn" to query["alpn"].orEmpty().ifBlank { TlsAlpnResolver.canonicalString("", network) },
+            "fp" to normalizeFingerprint(query["fp"].orEmpty().ifBlank { query["fingerprint"].orEmpty() }),
+        )
+        if (scheme == "vless") sanitized["encryption"] = "none"
+        if (query["security"].orEmpty().equals("tls", ignoreCase = true)) {
+            query["flow"]?.takeIf(String::isNotBlank)?.let { sanitized["flow"] = it }
+        }
+        serviceName.takeIf(String::isNotBlank)?.let { sanitized["serviceName"] = it }
+        query["authority"]?.takeIf(String::isNotBlank)?.let { sanitized["authority"] = it }
+        if (ProfileNetworks.isXhttp(network)) {
+            query["mode"]?.takeIf(String::isNotBlank)?.let { sanitized["mode"] = it }
+            query["extra"]?.takeIf(String::isNotBlank)?.let { sanitized["extra"] = it }
+        }
+        query["packetencoding"]?.takeIf(String::isNotBlank)?.let { sanitized["packetEncoding"] = it }
+        (query["countrycode"] ?: query["cc"])?.takeIf(String::isNotBlank)?.let { sanitized["countryCode"] = it }
+        (query["country"] ?: query["location"])?.takeIf(String::isNotBlank)?.let { sanitized["country"] = it }
+        val insecure = query["allowinsecure"] ?: query["insecure"]
+        if (insecure?.trim()?.lowercase() in setOf("1", "true", "yes", "on")) sanitized["allowInsecure"] = "1"
+
+        val encodedQuery = sanitized.entries.joinToString("&") { (key, value) -> "$key=${encode(value)}" }
+        val hostPart = if (sourceHost.contains(':')) "[$sourceHost]" else sourceHost
+        val fragment = uri.rawFragment?.let { "#$it" }.orEmpty()
+        return "$scheme://$credential@$hostPart:$sourcePort?$encodedQuery$fragment"
+    }
+
+    private fun coerceVmessToSni(text: String): String {
+        val encoded = text.substringAfter("://").substringBefore('#').trim()
+        val json = runCatching { JSONObject(Base64Codec.decode(encoded).toString(Charsets.UTF_8)) }
+            .getOrElse { throw IllegalArgumentException("Invalid VMess Base64 payload") }
+        val sourceNetwork = json.optString("net", "ws").lowercase()
+        val network = when (sourceNetwork) {
+            "ws", "tcp", "httpupgrade", "grpc", "xhttp" -> sourceNetwork
+            "splithttp" -> "xhttp"
+            "h2", "http" -> { rejectRemovedTransport(sourceNetwork); sourceNetwork }
+            "raw", "none" -> "tcp"
+            else -> if (json.optString("host").isNotBlank() || json.optString("path").isNotBlank()) "ws" else "tcp"
+        }
+        val sourceHost = json.optString("add").trim()
+        val sni = json.optString("sni").ifBlank { json.optString("host") }.ifBlank { sourceHost }
+        json.put("net", network)
+            .put("tls", "tls")
+            .put("sni", sni)
+            .put("host", json.optString("host").ifBlank { sni })
+            .put("fp", json.optString("fp").ifBlank { "chrome" })
+            .put("alpn", json.optString("alpn").ifBlank { TlsAlpnResolver.canonicalString("", network) })
+        return "vmess://${Base64Codec.encode(json.toString().toByteArray(Charsets.UTF_8))}"
+    }
+
+    private fun parseQueryLenient(raw: String?): Map<String, String> {
+        if (raw.isNullOrBlank()) return emptyMap()
+        val result = LinkedHashMap<String, String>()
+        raw.replace("&amp;", "&", ignoreCase = true).split('&').forEach { part ->
+            if (part.isBlank()) return@forEach
+            val split = part.split('=', limit = 2)
+            val key = decode(split[0]).trim().lowercase().removePrefix("amp;")
+            result[key] = decode(split.getOrElse(1) { "" })
+        }
+        return result
+    }
+
+    private fun parseBoolean(raw: String?): Boolean {
+        if (raw.isNullOrBlank()) return false
+        return when (raw.trim().lowercase()) {
+            "1", "true", "yes", "on" -> true
+            else -> false
+        }
+    }
+
+    private fun decode(value: String): String =
+        runCatching { URLDecoder.decode(value, StandardCharsets.UTF_8.name()) }.getOrElse { value }
+
+    private fun encode(value: String): String =
+        URLEncoder.encode(value, StandardCharsets.UTF_8.name()).replace("+", "%20")
+
+    private fun newId(): String = "profile:${UUID.randomUUID()}"
+
+}

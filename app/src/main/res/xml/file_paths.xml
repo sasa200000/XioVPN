@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Exposes only the app's own download folder to the package installer.
+  DownloadManager writes the update APK under
+  Android/data/<package>/files/Download/, so external-files-path "Download/"
+  is exactly that directory and nothing else.
+-->
+<paths>
+    <external-files-path name="update_downloads" path="Download/" />
+</paths>

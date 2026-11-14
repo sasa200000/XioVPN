@@ -1,0 +1,126 @@
+name: Build XioVPN APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump to apply before building'
+        type: choice
+        default: none
+        options: [none, patch, minor, major]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0 ndk;26.3.11579264 cmake;3.22.1'
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: gradle-
+
+      # A stable signing key is what makes in-place updates possible. Without it
+      # Android refuses to install an update over an existing app
+      # ("App not installed" / incompatible signature). The keystore is injected
+      # from repository secrets and never committed.
+      - name: Restore signing key
+        if: ${{ env.KEYSTORE_BASE64 != '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.XIO_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning::XIO_KEYSTORE_BASE64 secret missing — building an unsigned release"
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/xiopvn-release.jks"
+          cat > signing.properties <<EOF
+          storeFile=$RUNNER_TEMP/xiopvn-release.jks
+          storePassword=${{ secrets.XIO_KEYSTORE_PASSWORD }}
+          keyAlias=${{ secrets.XIO_KEY_ALIAS }}
+          keyPassword=${{ secrets.XIO_KEY_PASSWORD }}
+          EOF
+          echo "signing.properties written"
+
+      - name: Bump version
+        if: ${{ inputs.bump != 'none' && inputs.bump != '' }}
+        run: |
+          python3 - <<'PY'
+          import os, re, pathlib
+          bump = os.environ["BUMP"]
+          p = pathlib.Path("app/build.gradle.kts")
+          s = p.read_text(encoding="utf-8")
+          code = int(re.search(r"versionCode = (\d+)", s).group(1))
+          name = re.search(r'versionName = "([^"]+)"', s).group(1)
+          parts = [int(x) for x in name.split(".")]
+          idx = {"patch": 2, "minor": 1, "major": 0}[bump]
+          parts[idx] += 1
+          for i in range(idx + 1, len(parts)):
+              parts[i] = 0
+          new_name = ".".join(str(x) for x in parts)
+          s = re.sub(r"versionCode = \d+", f"versionCode = {code + 1}", s)
+          s = re.sub(r'versionName = "[^"]+"', f'versionName = "{new_name}"', s)
+          p.write_text(s, encoding="utf-8")
+          print(f"{name} ({code}) -> {new_name} ({code + 1})")
+          PY
+        env:
+          BUMP: ${{ inputs.bump }}
+
+      # Unit tests run before the APK is built: a parser regression must fail the
+      # build, not ship silently.
+      - name: Unit tests
+        run: |
+          ./gradlew --no-daemon :app:testReleaseUnitTest --stacktrace
+
+      - name: Build release APKs + store bundle (AAB)
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:assembleRelease -x lint --stacktrace
+          # Stores that accept Android App Bundles (Google Play, and Cafe Bazaar
+          # accepts APK; Myket accepts both). The bundle is built too so you can
+          # hand whichever format a store asks for.
+          ./gradlew --no-daemon :app:bundleRelease -x lint --stacktrace
+
+      - name: Verify signature and identity
+        run: |
+          APK=$(find app/build/outputs/apk/release -name '*.apk' | head -1)
+          echo "APK: $APK"
+          BT="$ANDROID_HOME/build-tools/35.0.0"
+          "$BT/aapt2" dump badging "$APK" | grep -E "^package|^application-label:" || true
+          "$BT/apksigner" verify --print-certs "$APK" || true
+
+      - name: Collect APKs and bundle
+        run: |
+          mkdir -p out
+          find app/build/outputs/apk/release -name '*.apk' -exec cp {} out/ \;
+          find app/build/outputs/bundle -name '*.aab' -exec cp {} out/ \;
+          ls -la out/
+
+      - name: Upload APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: xiopvn-release
+          path: |
+            out/*.apk
+            out/*.aab
+          if-no-files-found: error

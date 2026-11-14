@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">XioVPN</string>
+    <string name="vpn_channel_name">XioVPN Connection</string>
+    <string name="vpn_channel_description">Tunnel and proxy connection status</string>
+    <string name="vpn_connecting_notification">Connecting with XioVPN…</string>
+    <string name="vpn_connected_notification">XioVPN connected</string>
+    <string name="notification_engine_connected">%1$s connected</string>
+    <string name="notification_engine_state">connected</string>
+    <string name="proxy_connecting_notification">Starting local SOCKS5 proxy…</string>
+    <string name="proxy_connected_notification">SOCKS5 proxy connected</string>
+    <string name="vpn_failed_notification">XioVPN connection failed</string>
+    <string name="vpn_kill_switch_notification">Internet blocked · Kill switch is on</string>
+    <string name="notification_disconnect">Disconnect</string>
+    <string name="notification_close">Close</string>
+    <string name="notification_pause">Pause</string>
+    <string name="notification_resume">Resume</string>
+    <string name="vpn_paused_notification">Paused — traffic is not going through the tunnel</string>
+    <string name="proxy_paused_notification">Paused — SOCKS traffic is direct</string>
+    <string name="quick_settings_tile_label">XioVPN</string>
+    <string name="quick_settings_tile_connected">Connected</string>
+    <string name="quick_settings_tile_connecting">Connecting</string>
+    <string name="quick_settings_tile_disconnecting">Disconnecting</string>
+    <string name="quick_settings_tile_disconnected">Disconnected</string>
+    <string name="quick_settings_tile_error">Connection failed</string>
+</resources>

@@ -1,0 +1,243 @@
+package com.xiovpn.mobile.ui
+
+import android.Manifest
+import android.app.Activity
+import android.content.Context
+import android.content.Intent
+import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
+import android.content.res.Configuration
+import android.content.res.Resources
+import android.net.VpnService
+import android.os.Build
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.flow.first
+import com.xiovpn.mobile.BuildConfig
+import com.xiovpn.mobile.core.ConnectionState
+import com.xiovpn.mobile.core.ConnectionStateStore
+import com.xiovpn.mobile.core.VpnController
+import com.xiovpn.mobile.location.GpsSpoofRuntime
+import com.xiovpn.mobile.settings.AdvancedSettingsStore
+import com.xiovpn.mobile.settings.CONNECTION_MODE_PROXY
+import com.xiovpn.mobile.settings.NetworkGuardStore
+import com.xiovpn.mobile.ui.theme.XioVpnTheme
+import com.xiovpn.mobile.vpn.AutoConnectCoordinator
+import com.xiovpn.mobile.vpn.AutoConnectOrigin
+import com.xiovpn.mobile.vpn.ConnectionMetricsStore
+import com.xiovpn.mobile.vpn.LivePing
+import com.xiovpn.mobile.vpn.MonthlyTrafficStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+class MainActivity : ComponentActivity() {
+    private val vpnPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        val granted = result.resultCode == Activity.RESULT_OK || VpnService.prepare(this) == null
+        if (granted) {
+            startVpnService()
+        } else {
+            ConnectionStateStore.markError()
+        }
+    }
+
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) {
+        continueConnectionStart()
+    }
+
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(AppFontScale.wrap(newBase))
+    }
+
+    override fun applyOverrideConfiguration(overrideConfiguration: Configuration?) {
+        super.applyOverrideConfiguration(overrideConfiguration?.let(AppFontScale::lock))
+    }
+
+    override fun getResources(): Resources {
+        val resources = super.getResources()
+        AppFontScale.lock(resources)
+        return resources
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(AppFontScale.lock(newConfig))
+        AppFontScale.lock(resources)
+        applyShellOrientation()
+    }
+
+    private fun applyShellOrientation() {
+        requestedOrientation = if (BuildConfig.TV_MODE) {
+            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        applyShellOrientation()
+        GpsSpoofRuntime.attach(this)
+        NetworkGuardStore.get(this)
+        MonthlyTrafficStore.get(this)
+        AutoConnectCoordinator.ensureWatching(this)
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+        )
+        setContent {
+            val state = ConnectionStateStore.state.collectAsStateWithLifecycle().value
+            XioVpnTheme {
+                TvFocusProvider {
+                    MainScreen(
+                        state = state,
+                        onConnect = ::beginConnect,
+                        onDisconnect = ::beginDisconnect,
+                        onSwitchProfile = ::beginProfileSwitch,
+                        onMinimize = { moveTaskToBack(true) },
+                        onCloseApp = { closeAppFromBack(state) },
+                    )
+                }
+            }
+        }
+        if (savedInstanceState == null) handleQuickTileIntent(intent)
+        if (savedInstanceState == null) {
+            window.decorView.post { AutoConnectCoordinator.tryStart(this, AutoConnectOrigin.APP_START) }
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                runForegroundPingLoop()
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleQuickTileIntent(intent)
+    }
+
+    private suspend fun runForegroundPingLoop() = coroutineScope {
+        var awaitingFirst = true
+        while (isActive) {
+            if (ConnectionStateStore.state.value != ConnectionState.CONNECTED) {
+                awaitingFirst = true
+                // Suspend until connected instead of waking every 400 ms while idle.
+                ConnectionStateStore.state.first { it == ConnectionState.CONNECTED }
+                continue
+            }
+            if (awaitingFirst) {
+                delay(LivePing.SETTLE_MS)
+                if (ConnectionStateStore.state.value != ConnectionState.CONNECTED) continue
+                awaitingFirst = false
+            }
+            LivePing.awaitChipSlot(this@MainActivity) {
+                isActive && ConnectionStateStore.state.value == ConnectionState.CONNECTED
+            }
+            if (!isActive || ConnectionStateStore.state.value != ConnectionState.CONNECTED) continue
+            if (ConnectionMetricsStore.metrics.value.latencyMs == null) {
+                ConnectionMetricsStore.beginLatencyMeasurement()
+            }
+            val sample = withContext(Dispatchers.IO) {
+                runCatching { LivePing.measure(this@MainActivity) }.getOrNull()
+            }
+            if (sample != null) {
+                ConnectionMetricsStore.publishLivePing(sample)
+            } else if (ConnectionMetricsStore.metrics.value.latencyMs == null) {
+                ConnectionMetricsStore.finishLatencyMeasurement()
+            }
+            delay(LivePing.INTERVAL_MS)
+        }
+    }
+
+    private fun beginConnect() {
+        if (!ConnectionStateStore.tryBeginConnect()) return
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            continueConnectionStart()
+        }
+    }
+
+    private fun handleQuickTileIntent(source: Intent?) {
+        if (source?.getBooleanExtra(EXTRA_CONNECT_FROM_QUICK_TILE, false) != true) return
+        source.removeExtra(EXTRA_CONNECT_FROM_QUICK_TILE)
+        window.decorView.post { beginConnect() }
+    }
+
+    private fun continueConnectionStart() {
+        if (AdvancedSettingsStore(this).snapshot().connectionMode == CONNECTION_MODE_PROXY) {
+            startVpnService()
+        } else {
+            requestVpnPermission()
+        }
+    }
+
+    private fun requestVpnPermission() {
+        try {
+            val prepareIntent = VpnService.prepare(this)
+            if (prepareIntent == null) {
+                startVpnService()
+            } else {
+                vpnPermissionLauncher.launch(prepareIntent)
+            }
+        } catch (_: Throwable) {
+            ConnectionStateStore.markError()
+        }
+    }
+
+    private fun startVpnService() {
+        try {
+            VpnController.start(this)
+        } catch (_: Throwable) {
+            ConnectionStateStore.markError()
+        }
+    }
+
+    private fun beginDisconnect() {
+        if (!ConnectionStateStore.tryBeginDisconnect()) return
+        try {
+            VpnController.stop(this)
+        } catch (_: Throwable) {
+            ConnectionStateStore.markDisconnected()
+        }
+    }
+
+    private fun beginProfileSwitch() {
+        try {
+            VpnController.switchProfile(this)
+        } catch (_: Throwable) {
+            ConnectionStateStore.markError()
+        }
+    }
+
+    private fun closeAppFromBack(state: ConnectionState) {
+        if (state == ConnectionState.CONNECTING || state == ConnectionState.DISCONNECTING) {
+            runCatching { VpnController.close(this) }
+        }
+        finishAndRemoveTask()
+    }
+
+    companion object {
+        const val EXTRA_CONNECT_FROM_QUICK_TILE = "com.xiovpn.mobile.extra.CONNECT_FROM_QUICK_TILE"
+    }
+}
