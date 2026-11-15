@@ -6,14 +6,14 @@
 
 **Three tunnel engines in one bilingual Android app: Xray with one-tap auto config, Tor with WebTunnel bridges, and XioVPN PoW (Psiphon over WARP).**
 
-[![Release](https://img.shields.io/github/v/release/mohmdnini26/XioVPN-Android?display_name=tag&sort=semver&label=version&style=flat-square&color=7c3aed)](https://github.com/mohmdnini26/XioVPN-Android/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/mohmdnini26/XioVPN-Android/total?style=flat-square)](https://github.com/mohmdnini26/XioVPN-Android/releases)
+[![Release](https://img.shields.io/github/v/release/sasa200000/XioVPN?display_name=tag&sort=semver&label=version&style=flat-square&color=7c3aed)](https://github.com/sasa200000/XioVPN/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/sasa200000/XioVPN/total?style=flat-square)](https://github.com/sasa200000/XioVPN/releases)
 ![Android](https://img.shields.io/badge/Android-7.0%2B-green?style=flat-square&logo=android&logoColor=white)
 ![targetSdk](https://img.shields.io/badge/targetSdk-35-blue?style=flat-square)
 ![Kotlin](https://img.shields.io/badge/Kotlin-Compose-purple?style=flat-square&logo=kotlin)
-[![Stars](https://img.shields.io/github/stars/mohmdnini26/XioVPN-Android?style=flat-square)](https://github.com/mohmdnini26/XioVPN-Android/stargazers)
+[![Stars](https://img.shields.io/github/stars/sasa200000/XioVPN?style=flat-square)](https://github.com/sasa200000/XioVPN/stargazers)
 
-[فارسی](./README.md) · **English** · [Telegram](https://t.me/XioVPN) · [Windows version](https://github.com/mohmdnini26/XioVPN-Android)
+[فارسی](./README.md) · **English** · [Telegram](https://t.me/XioVPN) · [Windows version](https://github.com/sasa200000/XioVPN)
 
 </div>
 
@@ -95,7 +95,7 @@ No configs needed: the native Rust core `Aether` raises a WARP leg over MASQUE (
 
 ## Which APK should I download?
 
-Download from **[Releases](https://github.com/mohmdnini26/XioVPN-Android/releases/latest)**:
+Download from **[Releases](https://github.com/sasa200000/XioVPN/releases/latest)**:
 
 | File | Use it for |
 |---|---|
@@ -125,8 +125,8 @@ Download from **[Releases](https://github.com/mohmdnini26/XioVPN-Android/release
 ## Build from source
 
 ```powershell
-git clone https://github.com/mohmdnini26/XioVPN-Android.git
-cd XioVPN-SNI-Spoofer-Android
+git clone https://github.com/sasa200000/XioVPN.git
+cd XioVPN
 .\gradlew.bat :app:assembleRelease
 # -> app\build\outputs\apk\release\XioVPN-<version>-<abi>.apk
 ```
@@ -156,7 +156,7 @@ No. Only one engine runs at a time; switching while connected disconnects first.
 |---|---|
 | 📢 Channel | [@UacSniSpoofer](https://t.me/XioVPN) |
 | 👥 Group | [@UacSniSpooferGroup](https://t.me/XioVPNGroup) |
-| 🐛 Bugs | [GitHub Issues](https://github.com/mohmdnini26/XioVPN-Android/issues) |
+| 🐛 Bugs | [GitHub Issues](https://github.com/sasa200000/XioVPN/issues) |
 
 ## Disclaimer
 
@@ -168,6 +168,6 @@ Connection quality depends on your carrier, network and the moment — no route 
 
 ### ⭐ Happy with the app? Support us with a star on GitHub
 
-[![Star on GitHub](https://img.shields.io/github/stars/mohmdnini26/XioVPN-Android?style=social)](https://github.com/mohmdnini26/XioVPN-Android)
+[![Star on GitHub](https://img.shields.io/github/stars/sasa200000/XioVPN?style=social)](https://github.com/sasa200000/XioVPN)
 
 </div>
