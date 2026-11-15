@@ -10,7 +10,7 @@ package com.xiovpn.mobile.engine.direct
 data class DirectEngineSettings(
     val googleFronting: Boolean = true,
     val echEnabled: Boolean = true,
-    val fragmentEnabled: Boolean = false,
+    val fragmentEnabled: Boolean = true,
     val variant: String = VARIANT_A,
     val helloLengths: String = HELLO_LENGTHS_A,
     val helloDelays: String = "0",
@@ -23,7 +23,7 @@ data class DirectEngineSettings(
     val tcpLengths: String = "1",
     val tcpDelays: String = "1",
     val tcpMaxSplit: Int = 201,
-    val udpNoise: Boolean = false,
+    val udpNoise: Boolean = true,
     val blockQuic: Boolean = true,
     val ipv6: Boolean = false,
     val iranDirect: Boolean = true,

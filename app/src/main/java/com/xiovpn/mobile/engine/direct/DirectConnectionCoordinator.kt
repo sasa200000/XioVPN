@@ -38,24 +38,56 @@ class DirectConnectionCoordinator(private val context: Context) {
         val settings = DirectEngineStore.get(context).snapshot()
         val s = advanced.validated()
         port = s.socksPort
+        // Auto-retry: try each strategy in turn until the probe passes. Order:
+        // MITM fronting (variant A -> B) -> fragment-only -> plain. Each stop() releases
+        // the TUN/ports, so every attempt starts clean.
         DirectStatusStore.update(DirectPhase.BUILDING, 20, "Building serverless config (variant ${settings.variant})")
-        AppLogRepository.info(LogSource.XRAY, "XioVPN Direct: fronting=${settings.googleFronting} ech=${settings.echEnabled} fragment=${settings.fragmentEnabled} variant=${settings.variant}")
-        DirectStatusStore.update(DirectPhase.STARTING, 50, "Starting Xray core (direct only, no server)")
-        val attempt = runCatching { start(settings, s, proxyMode, noise = true, establishTun) }
-        if (attempt.isFailure && settings.udpNoise) {
-            AppLogRepository.warning(LogSource.XRAY, "XioVPN Direct: start with UDP noise failed, retrying without it", attempt.exceptionOrNull())
-            stopLocked()
-            start(settings, s, proxyMode, noise = false, establishTun)
-        } else {
-            attempt.getOrThrow()
+        val mitmProbe = settings.googleFronting || settings.echEnabled
+        data class Attempt(val label: String, val variant: String?, val frag: Boolean, val noise: Boolean)
+        val attempts = buildList {
+            if (mitmProbe) {
+                add(Attempt("MITM+variantA", "A", settings.fragmentEnabled, settings.udpNoise))
+                add(Attempt("MITM+variantB", "B", settings.fragmentEnabled, settings.udpNoise))
+                add(Attempt("MITM+nofrag", null, false, false))
+            } else {
+                add(Attempt("frag+A", "A", true, settings.udpNoise))
+                add(Attempt("frag+B", "B", true, settings.udpNoise))
+                add(Attempt("plain", null, false, false))
+            }
         }
-        DirectStatusStore.update(DirectPhase.CHECKING, 75, "Checking real reachability through the tunnel")
-        val probe = verify(s.socksAddress, s.socksPort, mitm = settings.googleFronting || settings.echEnabled)
-        if (!probe.ok) {
-            stopLocked()
-            error("No site answered through XioVPN Direct (${probe.detail}). DNS or the ClientHello split is blocked on this network; try variant B or other split settings.")
+        var lastProbe: ProbeResult? = null
+        var lastError: Throwable? = null
+        for ((idx, at) in attempts.withIndex()) {
+            if (idx > 0) {
+                DirectStatusStore.update(DirectPhase.BUILDING, 20 + idx * 10, "Retrying: ${at.label}")
+                AppLogRepository.warning(LogSource.XRAY, "XioVPN Direct: trying next strategy (${at.label})")
+                stopLocked()
+            }
+            val st = at.variant?.let { settings.withVariant(it) } ?: settings
+            AppLogRepository.info(LogSource.XRAY, "XioVPN Direct: strategy=${at.label} fronting=${st.googleFronting} ech=${st.echEnabled} fragment=$at.frag noise=$at.noise")
+            DirectStatusStore.update(DirectPhase.STARTING, 40 + idx * 10, "Starting Xray core (${at.label})")
+            try {
+                start(st, s, proxyMode, noise = at.noise, establishTun, forceFrag = at.frag)
+            } catch (e: Throwable) {
+                lastError = e
+                AppLogRepository.warning(LogSource.XRAY, "XioVPN Direct: ${at.label} start failed", e)
+                continue
+            }
+            DirectStatusStore.update(DirectPhase.CHECKING, 75, "Checking real reachability (${at.label})")
+            val probe = verify(s.socksAddress, s.socksPort, mitm = st.googleFronting || st.echEnabled)
+            if (probe.ok) {
+                AppLogRepository.success(LogSource.XRAY, "XioVPN Direct probe passed via ${at.label}: ${probe.detail}")
+                lastProbe = probe
+                lastError = null
+                break
+            }
+            lastProbe = probe
         }
-        AppLogRepository.success(LogSource.XRAY, "XioVPN Direct probe passed: ${probe.detail}")
+        if (lastError != null || lastProbe?.ok != true) {
+            stopLocked()
+            val detail = lastProbe?.detail ?: (lastError?.message ?: "unknown")
+            error("No site answered through XioVPN Direct ($detail). All strategies (MITM A/B, fragment, plain) failed on this network.")
+        }
     }
 
     data class ProbeResult(val ok: Boolean, val detail: String)
@@ -120,8 +152,10 @@ class DirectConnectionCoordinator(private val context: Context) {
         proxyMode: Boolean,
         noise: Boolean,
         establishTun: () -> ParcelFileDescriptor?,
+        forceFrag: Boolean? = null,
     ) {
-        val ca = if (settings.googleFronting || settings.echEnabled) DirectCa.ensure(context) else null
+        val st = if (forceFrag != null) settings.copy(fragmentEnabled = forceFrag) else settings
+        val ca = if (st.googleFronting || st.echEnabled) DirectCa.ensure(context) else null
         val h11 = if (ca != null) freeLoopbackPort() else 0
         val h211 = if (ca != null) freeLoopbackPort() else 0
         AppLogRepository.debug(LogSource.XRAY, "XioVPN Direct MITM decrypt ports h11=$h11 h211=$h211")
@@ -129,7 +163,7 @@ class DirectConnectionCoordinator(private val context: Context) {
         DomesticDirect.applyEnabled(NetworkGuardStore.get(context).snapshot().iranDirect)
         // GeoAssets.ensure via DomesticDirect
         val config = DirectXrayConfig.build(
-            settings, s.socksAddress, s.socksPort, s.tunMtu,
+            st, s.socksAddress, s.socksPort, s.tunMtu,
             nativeTun = !proxyMode, ca = ca, noiseAllowed = noise,
             mitmH11Port = h11, mitmH211Port = h211,
         )
