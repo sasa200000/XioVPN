@@ -6,14 +6,14 @@
 
 **سه موتور اتصال در یک برنامه‌ی دوزبانه: Xray با کانفیگ خودکار یک‌لمسی، Tor با پل‌های WebTunnel و XioVPN PoW (سایفون روی وارپ)**
 
-[![Release](https://img.shields.io/github/v/release/mohmdnini26/XioVPN-Android?display_name=tag&sort=semver&label=version&style=flat-square&color=7c3aed)](https://github.com/mohmdnini26/XioVPN-Android/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/mohmdnini26/XioVPN-Android/total?style=flat-square)](https://github.com/mohmdnini26/XioVPN-Android/releases)
+[![Release](https://img.shields.io/github/v/release/sasa200000/XioVPN?display_name=tag&sort=semver&label=version&style=flat-square&color=7c3aed)](https://github.com/sasa200000/XioVPN/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/sasa200000/XioVPN/total?style=flat-square)](https://github.com/sasa200000/XioVPN/releases)
 ![Android](https://img.shields.io/badge/Android-7.0%2B-green?style=flat-square&logo=android&logoColor=white)
 ![targetSdk](https://img.shields.io/badge/targetSdk-35-blue?style=flat-square)
 ![Kotlin](https://img.shields.io/badge/Kotlin-Compose-purple?style=flat-square&logo=kotlin)
-[![Stars](https://img.shields.io/github/stars/mohmdnini26/XioVPN-Android?style=flat-square)](https://github.com/mohmdnini26/XioVPN-Android/stargazers)
+[![Stars](https://img.shields.io/github/stars/sasa200000/XioVPN?style=flat-square)](https://github.com/sasa200000/XioVPN/stargazers)
 
-**فارسی** · [English](./README.en.md) · [تلگرام](https://t.me/XioVPN) · [نسخه ویندوز](https://github.com/mohmdnini26/XioVPN-Android)
+**فارسی** · [English](./README.en.md) · [تلگرام](https://t.me/XioVPN) · [نسخه ویندوز](https://github.com/sasa200000/XioVPN)
 
 </div>
 
@@ -97,7 +97,7 @@
 
 ## کدام APK را دانلود کنم؟
 
-از صفحه‌ی **[Releases](https://github.com/mohmdnini26/XioVPN-Android/releases/latest)** دانلود کنید:
+از صفحه‌ی **[Releases](https://github.com/sasa200000/XioVPN/releases/latest)** دانلود کنید:
 
 | فایل | مناسب برای |
 |---|---|
@@ -129,8 +129,8 @@
 </div>
 
 ```powershell
-git clone https://github.com/mohmdnini26/XioVPN-Android.git
-cd XioVPN-SNI-Spoofer-Android
+git clone https://github.com/sasa200000/XioVPN.git
+cd XioVPN
 .\gradlew.bat :app:assembleRelease
 # -> app\build\outputs\apk\release\XioVPN-<version>-<abi>.apk
 ```
@@ -162,7 +162,7 @@ cd XioVPN-SNI-Spoofer-Android
 |---|---|
 | 📢 کانال | [@UacSniSpoofer](https://t.me/XioVPN) |
 | 👥 گروه | [@UacSniSpooferGroup](https://t.me/XioVPNGroup) |
-| 🐛 گزارش مشکل | [GitHub Issues](https://github.com/mohmdnini26/XioVPN-Android/issues) |
+| 🐛 گزارش مشکل | [GitHub Issues](https://github.com/sasa200000/XioVPN/issues) |
 
 ## سلب مسئولیت
 
@@ -176,6 +176,6 @@ cd XioVPN-SNI-Spoofer-Android
 
 ### ⭐ از برنامه راضی هستی؟ با ستاره دادن در گیت‌هاب از ما حمایت کن
 
-[![Star on GitHub](https://img.shields.io/github/stars/mohmdnini26/XioVPN-Android?style=social)](https://github.com/mohmdnini26/XioVPN-Android)
+[![Star on GitHub](https://img.shields.io/github/stars/sasa200000/XioVPN?style=social)](https://github.com/sasa200000/XioVPN)
 
 </div>
