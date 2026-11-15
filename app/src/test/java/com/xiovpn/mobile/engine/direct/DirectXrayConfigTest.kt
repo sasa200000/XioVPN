@@ -27,10 +27,13 @@ class DirectXrayConfigTest {
         assertFalse(c.contains("\"protocol\":\"vless\""))
     }
 
-    @Test fun fragmentOptionalAndOffByDefault() {
-        assertFalse(DirectEngineSettings.DEFAULT.fragmentEnabled)
-        val withFrag = plain(DirectEngineSettings.DEFAULT.copy(googleFronting = false, echEnabled = false, fragmentEnabled = true))
+    @Test fun fragmentOnByDefaultForIranLines() {
+        assertTrue(DirectEngineSettings.DEFAULT.fragmentEnabled)
+        val withFrag = plain(DirectEngineSettings.DEFAULT.copy(googleFronting = false, echEnabled = false))
         assertTrue(withFrag.contains("\"packets\":\"tlshello\""))
+        // user can still turn it off
+        val noFrag = plain(DirectEngineSettings.DEFAULT.copy(googleFronting = false, echEnabled = false, fragmentEnabled = false))
+        assertFalse(noFrag.contains("\"packets\":\"tlshello\""))
     }
 
     @Test fun iranDirectUsesGeoTags() {
