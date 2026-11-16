@@ -499,6 +499,7 @@ private fun DrawerNavItem(
                         DrawerDestination.TOR_SETTINGS -> "تنظیمات Tor"
                         DrawerDestination.DIRECT_SETTINGS -> "تنظیمات Direct"
                         DrawerDestination.GLOW_SETTINGS -> "رقص نور"
+                        DrawerDestination.APPEARANCE -> "ظاهر برنامه"
                         DrawerDestination.SUPPORT -> "پشتیبانی"
                     },
                 ),

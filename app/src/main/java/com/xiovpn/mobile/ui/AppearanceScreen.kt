@@ -19,7 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.DashboardCustomize
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -73,7 +73,7 @@ internal fun AppearanceScreen(onMenuClick: () -> Unit) {
             ToolPageHeader(
                 title = homeText("Appearance", "ظاهر برنامه"),
                 subtitle = homeText("Colour, surface and text size", "رنگ، جنس سطح و اندازه متن"),
-                icon = Icons.Outlined.Palette,
+                icon = Icons.Outlined.DashboardCustomize,
                 accent = accent,
                 onMenuClick = onMenuClick,
             )

@@ -207,7 +207,7 @@ internal fun SettingsScreen(
             item {
                 SettingsGroup(homeText("More", "سایر")) {
                     SettingsNavRow(
-                        icon = Icons.Outlined.Palette,
+                        icon = Icons.Outlined.DashboardCustomize,
                         title = homeText("Appearance", "ظاهر برنامه"),
                         summary = homeText(
                             "Accent colour, surface and text size",
