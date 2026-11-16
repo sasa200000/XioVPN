@@ -94,14 +94,14 @@ internal object AppearanceSettings {
         prefs?.edit()?.putInt(KEY_ACCENT, next)?.apply()
     }
 
-    fun setStyle(value: String) {
+    fun applyStyle(value: String) {
         val next = value.takeIf(ThemeStyle::isKnown) ?: ThemeStyle.LIQUID
         if (next == style) return
         style = next
         prefs?.edit()?.putString(KEY_STYLE, next)?.apply()
     }
 
-    fun setFontPercent(value: Int) {
+    fun applyFontPercent(value: Int) {
         val next = value.coerceIn(MIN_FONT, MAX_FONT)
         if (next == fontPercent) return
         fontPercent = next

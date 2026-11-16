@@ -191,7 +191,7 @@ internal fun AppearanceScreen(onMenuClick: () -> Unit) {
                                         color = if (selected) accent else XioColors.CardBorder,
                                         shape = RoundedCornerShape(12.dp),
                                     )
-                                    .clickable { AppearanceSettings.setFontPercent(percent) },
+                                    .clickable { AppearanceSettings.applyFontPercent(percent) },
                                 contentAlignment = Alignment.Center,
                             ) {
                                 Text(
@@ -285,7 +285,7 @@ private fun StyleOption(
                 color = if (selected) accent else XioColors.CardBorder,
                 shape = RoundedCornerShape(14.dp),
             )
-            .clickable { AppearanceSettings.setStyle(key) }
+            .clickable { AppearanceSettings.applyStyle(key) }
             .padding(horizontal = 10.dp),
         verticalArrangement = Arrangement.Center,
     ) {
