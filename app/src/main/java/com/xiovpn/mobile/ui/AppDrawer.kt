@@ -99,6 +99,7 @@ internal enum class DrawerDestination {
     TOR_SETTINGS,
     DIRECT_SETTINGS,
     GLOW_SETTINGS,
+    APPEARANCE,
     SUPPORT,
 }
 

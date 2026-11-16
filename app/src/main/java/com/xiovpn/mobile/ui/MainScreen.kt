@@ -142,6 +142,7 @@ fun MainScreen(
     var directSettingsBack by rememberSaveable { mutableStateOf(DrawerDestination.SETTINGS) }
     var xraySettingsBack by rememberSaveable { mutableStateOf(DrawerDestination.SETTINGS) }
     var glowSettingsBack by rememberSaveable { mutableStateOf(DrawerDestination.SETTINGS) }
+    var appearanceBack by rememberSaveable { mutableStateOf(DrawerDestination.SETTINGS) }
     var connectFlowVisible by remember { mutableStateOf(false) }
     val languagePrefs = remember(context) {
         context.getSharedPreferences("app_preferences", android.content.Context.MODE_PRIVATE)
@@ -498,9 +499,16 @@ fun MainScreen(
                         glowSettingsBack = DrawerDestination.SETTINGS
                         selectedDestination = DrawerDestination.GLOW_SETTINGS
                     },
+                    onAppearanceClick = {
+                        appearanceBack = DrawerDestination.SETTINGS
+                        selectedDestination = DrawerDestination.APPEARANCE
+                    },
                 )
                 DrawerDestination.ADVANCED_SETTINGS -> XraySettingsScreen(
                     onBack = { selectedDestination = xraySettingsBack },
+                )
+                DrawerDestination.APPEARANCE -> AppearanceScreen(
+                    onMenuClick = openDrawer,
                 )
                 DrawerDestination.GLOW_SETTINGS -> GlowSettingsScreen(
                     onMenuClick = openDrawer,

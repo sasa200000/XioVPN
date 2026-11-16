@@ -10,6 +10,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 
 internal object AppFontScale {
+    /** Android's own font-scale setting is ignored; the app owns the scale. */
     const val FIXED = 1f
 
     fun wrap(base: Context): Context {
@@ -34,9 +35,20 @@ internal object AppFontScale {
     }
 }
 
+/**
+ * Pins the type scale to [scaled] times the baseline, ignoring the system font
+ * size. The in-app appearance setting drives [scaled] so text keeps the size
+ * the user chose for XioVPN itself.
+ */
 @Composable
-internal fun ProvideFixedFontScale(content: @Composable () -> Unit) {
+internal fun ProvideFixedFontScale(
+    scaled: Float = AppFontScale.FIXED,
+    content: @Composable () -> Unit,
+) {
     val density = LocalDensity.current
-    val fixed = remember(density.density) { Density(density.density, fontScale = AppFontScale.FIXED) }
+    val value = scaled.coerceIn(0.8f, 1.4f)
+    val fixed = remember(density.density, value) {
+        Density(density.density, fontScale = value)
+    }
     CompositionLocalProvider(LocalDensity provides fixed, content = content)
 }

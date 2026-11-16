@@ -144,6 +144,7 @@ internal fun SettingsScreen(
     onTorSettingsClick: () -> Unit,
     onDirectSettingsClick: () -> Unit = {},
     onGlowSettingsClick: () -> Unit = {},
+    onAppearanceClick: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val isPersian = LocalHomePersian.current
@@ -205,6 +206,17 @@ internal fun SettingsScreen(
             }
             item {
                 SettingsGroup(homeText("More", "سایر")) {
+                    SettingsNavRow(
+                        icon = Icons.Outlined.Palette,
+                        title = homeText("Appearance", "ظاهر برنامه"),
+                        summary = homeText(
+                            "Accent colour, surface and text size",
+                            "رنگ لهجه، جنس سطح و اندازه متن",
+                        ),
+                        isPersian = isPersian,
+                        showDivider = true,
+                        onClick = onAppearanceClick,
+                    )
                     SettingsNavRow(
                         icon = Icons.Outlined.AutoAwesome,
                         title = homeText("Light dance", "رقص نور"),
