@@ -262,6 +262,7 @@ internal object MciXrayConfigBuilder {
             // key + reserved bytes in "settings.secretKey"/"reserved", and the
             // tunnel addresses in "settings.address".
             ProxyProtocol.WIREGUARD -> wireguardSettings(identity, edge)
+            ProxyProtocol.SHADOWSOCKS -> shadowsocksSettings(identity, edge)
             ProxyProtocol.VMESS -> vnextSettings(
                 address = edge.address,
                 port = edge.port,
@@ -322,6 +323,46 @@ internal object MciXrayConfigBuilder {
             append("}]}")
         }
     }
+
+    /**
+     * Xray `shadowsocks` outbound settings.
+     *
+     * Shape (Xray-core):
+     *   {"servers":[{"address":"host","port":8388,
+     *                "method":"2022-blake3-aes-256-gcm",
+     *                "password":"<key>","uot":true,"UoTVersion":2}]}
+     *
+     * [RuntimeProxyIdentity.credential] carries `method:password`, which is how an
+     * `ss://` userinfo reads after base64 decoding. The method is validated
+     * against the AEAD set the bundled core registers; anything else (stream
+     * ciphers, plain unusable values) is rejected here rather than handed to the
+     * core, because Xray fails the whole config on one bad cipher.
+     */
+    private fun shadowsocksSettings(identity: RuntimeProxyIdentity, edge: MciEdge): String {
+        val raw = identity.credential
+        val sep = raw.indexOf(':')
+        val method = (if (sep > 0) raw.substring(0, sep) else "").trim().lowercase()
+        val password = if (sep > 0) raw.substring(sep + 1) else ""
+        val supported = method in SHADOWSOCKS_METHODS
+        val finalMethod = if (supported) method else "2022-blake3-aes-256-gcm"
+        val finalPassword = if (supported) password else raw
+        return "{\"servers\":[{\"address\":\"${q(edge.address)}\",\"port\":${edge.port}," +
+            "\"method\":\"${q(finalMethod)}\",\"password\":\"${q(finalPassword)}\"," +
+            "\"uot\":true,\"UoTVersion\":2}]}"
+    }
+
+    /** AEAD methods the bundled Xray core actually registers. */
+    private val SHADOWSOCKS_METHODS = setOf(
+        "aes-128-gcm",
+        "aes-256-gcm",
+        "chacha20-poly1305",
+        "chacha20-ietf-poly1305",
+        "xchacha20-poly1305",
+        "xchacha20-ietf-poly1305",
+        "2022-blake3-aes-128-gcm",
+        "2022-blake3-aes-256-gcm",
+        "2022-blake3-chacha20-poly1305",
+    )
 
     /** WARP "reserved" bytes, when the profile carries them in the endpoint. */
     private fun wireguardReserved(identity: RuntimeProxyIdentity): String? =

@@ -183,6 +183,9 @@ object ProfileUriParser {
         ) {
             return parseWireGuard(text, id, nameOverride)
         }
+        if (text.startsWith("ss://", ignoreCase = true)) {
+            return parseShadowsocks(text, id, nameOverride)
+        }
         val uri = runCatching { URI(text) }.getOrElse { throw IllegalArgumentException("Malformed configuration URI") }
         val protocol = when (uri.scheme?.lowercase()) {
             "trojan" -> ProxyProtocol.TROJAN
@@ -299,7 +302,7 @@ object ProfileUriParser {
     }
 
     fun extractUris(text: String): List<String> {
-        val matcher = Regex("(?i)(?:vless|trojan|vmess|wireguard|wg)://[^\\s<>\\\"']+")
+        val matcher = Regex("(?i)(?:vless|trojan|vmess|wireguard|wg|ss)://[^\\s<>\\\"']+")
         return matcher.findAll(text)
             .map { it.value.trim().trimEnd(',', ';', ')', ']', '}') }
             .distinct()
@@ -399,6 +402,81 @@ object ProfileUriParser {
      * as `publicKey`. An endpoint without an explicit private key is rejected,
      * because the core cannot build a handshake without it.
      */
+    /**
+     * `ss://` links, both shapes:
+     *
+     *   ss://base64(method:password)@host:port#name       (SIP002)
+     *   ss://base64(method:password@host:port)#name       (legacy whole-payload)
+     *
+     * A trailing `?plugin=...` is dropped: Xray's shadowsocks outbound has no
+     * SIP003 plugin support, so honouring it silently would not work anyway.
+     */
+    private fun parseShadowsocks(text: String, id: String, nameOverride: String?): ProxyProfile {
+        val body = text.trim().removePrefix("ss://").removePrefix("SS://").removePrefix("Ss://")
+        val hashCut = body.indexOf('#')
+        val rawName = if (hashCut >= 0) decode(body.substring(hashCut + 1)).trim() else ""
+        val payload = (if (hashCut >= 0) body.substring(0, hashCut) else body)
+            .substringBefore('?')
+            .trim()
+        require(payload.isNotEmpty()) { "Shadowsocks payload is empty" }
+
+        var creds: String
+        var hostPort: String
+        val at = payload.lastIndexOf('@')
+        if (at > 0) {
+            // SIP002: only the userinfo is base64; host:port stays in the clear.
+            creds = decodeBase64Text(payload.substring(0, at))
+            hostPort = payload.substring(at + 1)
+        } else {
+            val decoded = decodeBase64Text(payload)
+            val at2 = decoded.lastIndexOf('@')
+            require(at2 > 0) { "Shadowsocks payload is malformed" }
+            creds = decoded.substring(0, at2)
+            hostPort = decoded.substring(at2 + 1)
+        }
+
+        val sep = creds.indexOf(':')
+        require(sep > 0) { "Shadowsocks method:password is malformed" }
+        val method = creds.substring(0, sep).trim()
+        val password = creds.substring(sep + 1)
+
+        val colon = hostPort.lastIndexOf(':')
+        require(colon > 0) { "Shadowsocks host:port is malformed" }
+        val host = hostPort.substring(0, colon).trim().removePrefix("[").removeSuffix("]")
+        val port = hostPort.substring(colon + 1).trim().toIntOrNull()
+            ?: throw IllegalArgumentException("Shadowsocks port is invalid")
+
+        require(method.isNotEmpty()) { "Shadowsocks method is missing" }
+        require(password.isNotEmpty()) { "Shadowsocks password is missing" }
+        require(host.isNotEmpty()) { "Shadowsocks host is missing" }
+        require(port in 1..65535) { "Shadowsocks port is out of range" }
+
+        return ProxyProfile(
+            id = id,
+            name = nameOverride?.takeIf { it.isNotBlank() }
+                ?: rawName.takeIf { it.isNotBlank() }
+                ?: host,
+            protocol = ProxyProtocol.SHADOWSOCKS,
+            credential = "$method:$password",
+            serverHost = host,
+            serverPort = port,
+            network = "tcp",
+            security = "none",
+            sni = "",
+            host = host,
+            path = "",
+            alpn = "",
+            fingerprint = "",
+            allowInsecure = false,
+            flow = "",
+            encryption = method,
+            alterId = 0,
+            serviceName = "",
+            authority = "",
+            rawUri = text.trim(),
+        )
+    }
+
     private fun parseWireGuard(text: String, id: String, nameOverride: String?): ProxyProfile {
         val uri = runCatching { URI(text) }.getOrElse {
             throw IllegalArgumentException("Malformed WireGuard link")
@@ -617,6 +695,20 @@ object ProfileUriParser {
             "1", "true", "yes", "on" -> true
             else -> false
         }
+    }
+
+    /**
+     * `ss://` payloads are base64 (URL-safe alphabet tolerated by [Base64Codec]).
+     * Some clients emit them unpadded, or with a trailing '%3D'; both are handled.
+     */
+    private fun decodeBase64Text(value: String): String {
+        val cleaned = value.trim().substringBefore('#').let {
+            runCatching { URLDecoder.decode(it, StandardCharsets.UTF_8.name()) }.getOrElse { _ -> it }
+        }
+        val bytes = runCatching { Base64Codec.decode(cleaned) }.getOrElse {
+            throw IllegalArgumentException("Shadowsocks base64 payload is invalid")
+        }
+        return String(bytes, Charsets.UTF_8)
     }
 
     private fun decode(value: String): String =

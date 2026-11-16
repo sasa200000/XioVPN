@@ -44,7 +44,8 @@ class ProfileStore(context: Context) {
                 head.startsWith("trojan://", true) ||
                 head.startsWith("vmess://", true) ||
                 head.startsWith("wireguard://", true) ||
-                head.startsWith("wg://", true)
+                head.startsWith("wg://", true) ||
+                head.startsWith("ss://", true)
             ) {
                 listOf(head)
             } else {
@@ -55,7 +56,7 @@ class ProfileStore(context: Context) {
             return ProfileImportResult(
                 snapshot(),
                 0,
-                listOf("No VLESS, Trojan, VMess or WireGuard URI found"),
+                listOf("No VLESS, Trojan, VMess, WireGuard or Shadowsocks URI found"),
             )
         }
         val current = snapshot().customProfiles.toMutableList()

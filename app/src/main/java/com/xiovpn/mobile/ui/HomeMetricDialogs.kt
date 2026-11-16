@@ -1051,6 +1051,7 @@ private fun HomeConfigProtocolBadge(profile: ProxyProfile, emphasized: Boolean) 
         ProxyProtocol.VMESS -> Color(0xFFFFB454)
         ProxyProtocol.TROJAN -> DialogBlue
         ProxyProtocol.WIREGUARD -> Color(0xFF57C8FF)
+        ProxyProtocol.SHADOWSOCKS -> Color(0xFF7BE3A6)
     }
     Box(
         modifier = Modifier
@@ -1068,6 +1069,7 @@ private fun HomeConfigProtocolBadge(profile: ProxyProfile, emphasized: Boolean) 
                     ProxyProtocol.VMESS -> "M"
                     ProxyProtocol.TROJAN -> "T"
                     ProxyProtocol.WIREGUARD -> "W"
+                    ProxyProtocol.SHADOWSOCKS -> "S"
                 },
                 color = color,
                 fontSize = 13.sp,

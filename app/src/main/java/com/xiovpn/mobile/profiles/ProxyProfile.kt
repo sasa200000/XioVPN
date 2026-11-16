@@ -14,6 +14,14 @@ enum class ProxyProtocol(val wireName: String) {
      * key in [ProxyProfile.wgPresharedKey].
      */
     WIREGUARD("wireguard"),
+
+    /**
+     * Shadowsocks, spoken natively by the bundled Xray core (no extra native
+     * library). [ProxyProfile.credential] holds `method:password`, exactly as it
+     * appears in a `ss://` link, so the config builder can split it without
+     * carrying a second field.
+     */
+    SHADOWSOCKS("shadowsocks"),
 }
 
 
