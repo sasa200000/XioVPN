@@ -299,7 +299,7 @@ object ProfileUriParser {
     }
 
     fun extractUris(text: String): List<String> {
-        val matcher = Regex("(?i)(?:vless|trojan|vmess)://[^\\s<>\\\"']+")
+        val matcher = Regex("(?i)(?:vless|trojan|vmess|wireguard|wg)://[^\\s<>\\\"']+")
         return matcher.findAll(text)
             .map { it.value.trim().trimEnd(',', ';', ')', ']', '}') }
             .distinct()

@@ -111,4 +111,35 @@ class ProfileUriParserTest {
         assertEquals("xhttp", profile.network)
         assertEquals("h2", profile.alpn)
     }
+
+    // WireGuard links must survive the bulk "extract from pasted text" path.
+    // Before this, extractUris() only matched vless/trojan/vmess, so a shared
+    // wg:// or wireguard:// link was silently dropped on paste.
+    @Test
+    fun extractUrisFindsWireGuardLinks() {
+        val peer = "xTIBA5rboUvnH4htodjb6e697QjLERt1NAB4mZqp8Dg="
+        val privateKey = "yAnz5TF+lXXJte14tji3zlMNq+hd2rYUIgJBgB3fBmk="
+        val text = """
+            [Interface]
+            PrivateKey = $privateKey
+
+            wg://$peer@203.0.113.45:51820?privateKey=$privateKey&name=us-1
+            wireguard://$peer@engage.cloudflareclient.com:2408?privateKey=$privateKey
+            vless://30980fc4-8789-42df-80d1-0c8e5cd26881@origin.example:443#kept
+        """.trimIndent()
+
+        val found = ProfileUriParser.extractUris(text)
+
+        assertEquals(3, found.size)
+        assertTrue(found.any { it.startsWith("wg://") })
+        assertTrue(found.any { it.startsWith("wireguard://") })
+        assertTrue(found.any { it.startsWith("vless://") })
+    }
+
+    @Test
+    fun extractUrisDoesNotInventWireGuardLinks() {
+        assertTrue(ProfileUriParser.extractUris("no links in this text at all").isEmpty())
+        // A bare scheme word must not be treated as a link.
+        assertTrue(ProfileUriParser.extractUris("wireguard is not a uri").isEmpty())
+    }
 }

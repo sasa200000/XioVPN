@@ -38,18 +38,25 @@ class ProfileStore(context: Context) {
     @Synchronized
     fun importText(text: String, nameOverride: String? = null): ProfileImportResult {
         val candidates = ProfileUriParser.extractUris(text).ifEmpty {
+            val head = text.trim()
             if (
-                text.trim().startsWith("vless://", true) ||
-                text.trim().startsWith("trojan://", true) ||
-                text.trim().startsWith("vmess://", true)
+                head.startsWith("vless://", true) ||
+                head.startsWith("trojan://", true) ||
+                head.startsWith("vmess://", true) ||
+                head.startsWith("wireguard://", true) ||
+                head.startsWith("wg://", true)
             ) {
-                listOf(text.trim())
+                listOf(head)
             } else {
                 emptyList()
             }
         }
         if (candidates.isEmpty()) {
-            return ProfileImportResult(snapshot(), 0, listOf("No VLESS, Trojan or VMess URI found"))
+            return ProfileImportResult(
+                snapshot(),
+                0,
+                listOf("No VLESS, Trojan, VMess or WireGuard URI found"),
+            )
         }
         val current = snapshot().customProfiles.toMutableList()
         val errors = mutableListOf<String>()
